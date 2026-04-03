@@ -1,0 +1,17 @@
+psutil
+pandas
+numpy
+scikit-learn
+joblib
+
+pyttsx3
+SpeechRecognition
+PyAudio
+
+streamlit
+plotly
+
+scapy
+
+sounddevice
+plyer

@@ -1,0 +1,5 @@
+{
+  "hang_alert_enabled": true,
+  "alert_interval": 30,
+  "battery_high_threshold": 80
+}

@@ -1,0 +1,2760 @@
+📁 PROJECT STRUCTURE
+==================================================
+
+SmartGuard/
+    app.py
+    export_project.py
+    project_full_dump.txt
+    requirements.txt
+    app/
+        bootstrap.py
+        main.py
+        __init__.py
+    core/
+        data_logger.py
+        system_data.db
+        __init__.py
+        config/
+            api_keys.py
+            constants.py
+            ids_config.py
+            settings.json
+            __init__.py
+        database/
+            database.py
+            __init__.py
+        logger/
+            logger.py
+            __init__.py
+        logs/
+            alerts.log
+        utils/
+            logger.py
+            __init__.py
+    data/
+        kddcup.data_10_percent.gz
+        kddcup.names
+        system_data.csv
+        system_data.db
+        system_data_labeled.csv
+        system_logs.csv
+        system_metrics.db
+        training_attack_types
+    features/
+        __init__.py
+        ai_assistant/
+            ai_assistant.py
+            ai_brain.py
+            predictor.py
+            __init__.py
+        alerting/
+            alert_notifier.py
+            __init__.py
+        anomaly_detection/
+            feature_extractor.py
+            ids_engine.py
+            network_sniffer.py
+            prevention_engine.py
+            rule_engine.py
+            __init__.py
+        monitoring/
+            data_fetcher.py
+            monitor.py
+            system_info.py
+            __init__.py
+        system_control/
+            prevention.py
+            __init__.py
+        voice_assistant/
+            assistant.py
+            input.py
+            output.py
+            voice_service.py
+            wake_word.py
+            __init__.py
+    installer/
+    logs/
+        alerts.log
+    models/
+        model.pkl
+        rf_model.pkl
+        rf_model.skops
+        scaler.pkl
+        scaler.skops
+    schema/
+        feature_schema.py
+        __init__.py
+    services/
+        background_monitor.py
+        __init__.py
+    tests/
+    ui/
+        tray_app.py
+        __init__.py
+        dashboard/
+            analytics.py
+            analyzer_app.py
+            __init__.py
+            chatbot/
+                view.py
+            components/
+                alerts.py
+                ids_panel.py
+                metrics.py
+                sidebar.py
+                tables.py
+            file_cleaner/
+                file_cleaner.py
+                view.py
+            ids/
+                view.py
+                __init__.py
+            system_monitor/
+                view.py
+                __init__.py
+
+
+📄 FILE CONTENTS
+==================================================
+
+
+
+--- D:\Minor Project\SmartGuard\app.py ---
+
+import streamlit as st
+import sys
+import os
+import time
+
+
+import threading
+from features.anomaly_detection.network_sniffer import start_sniffing
+
+if "ids_started" not in st.session_state:
+    t = threading.Thread(target=start_sniffing, daemon=True)
+    t.start()
+    st.session_state.ids_started = True
+
+# ===============================
+# 🔥 PROJECT ROOT FIX
+# ===============================
+PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# ===============================
+# PAGE CONFIG
+# ===============================
+st.set_page_config(
+    page_title="Smart System & Security Monitor",
+    layout="wide"
+)
+
+st.title("🚀 Smart Laptop Analyzer + Cyber Guard")
+
+# ===============================
+# IMPORT CORE (FIXED)
+# ===============================
+from core.database.database import create_table, get_connection
+from core.data_logger import log_system_data
+
+# ===============================
+# DATABASE INIT
+# ===============================
+try:
+    create_table()
+except Exception as e:
+    st.error(f"Database Error: {e}")
+
+# ===============================
+# GLOBAL LOGGING SYSTEM
+# ===============================
+if "last_log_time" not in st.session_state:
+    st.session_state.last_log_time = 0
+
+if time.time() - st.session_state.last_log_time > 5:
+    try:
+        log_system_data()
+    except Exception as e:
+        st.error(f"Logging Error: {e}")
+    st.session_state.last_log_time = time.time()
+
+# ===============================
+# SIDEBAR
+# ===============================
+st.sidebar.header("⚙️ Controls")
+
+active_tab = st.sidebar.radio(
+    "Select Module",
+    [
+        "💻 System Monitor",
+        "🛡️ Intrusion Detection",
+        "🧹 Smart File Cleaner",
+        "🤖 AI Assistant"
+    ]
+)
+
+# Default values
+sys_refresh = None
+ids_refresh = None
+ids_reset = False
+
+# ===============================
+# SYSTEM MONITOR SETTINGS
+# ===============================
+if active_tab == "💻 System Monitor":
+    st.sidebar.subheader("💻 System Monitor Settings")
+
+    sys_refresh = st.sidebar.slider(
+        "Refresh System Monitor (sec)",
+        min_value=3,
+        max_value=30,
+        value=5,
+        step=1
+    )
+
+# ===============================
+# IDS SETTINGS
+# ===============================
+elif active_tab == "🛡️ Intrusion Detection":
+    st.sidebar.subheader("🛡️ IDS Settings")
+
+    ids_refresh = st.sidebar.slider(
+        "Refresh IDS Dashboard (sec)",
+        min_value=1,
+        max_value=10,
+        value=3,
+        step=1
+    )
+
+    ids_reset = st.sidebar.button("🔄 Reset Monitoring")
+
+# ===============================
+# MAIN CONTENT
+# ===============================
+
+# 💻 SYSTEM MONITOR
+if active_tab == "💻 System Monitor":
+    try:
+        from ui.dashboard.system_monitor.view import render_system_monitor
+        render_system_monitor(refresh_interval=sys_refresh)
+    except Exception as e:
+        st.error(f"System Monitor Error: {e}")
+
+# 🛡️ IDS
+elif active_tab == "🛡️ Intrusion Detection":
+    try:
+        from ui.dashboard.ids.view import render_ids_dashboard
+        render_ids_dashboard(
+            refresh_interval=ids_refresh,
+            reset_logs=ids_reset
+        )
+    except Exception as e:
+        st.error(f"IDS Error: {e}")
+
+# 🤖 AI ASSISTANT
+elif active_tab == "🤖 AI Assistant":
+    try:
+        from ui.dashboard.chatbot.view import render_chatbot
+        render_chatbot()
+    except Exception as e:
+        st.error(f"AI Assistant Error: {e}")
+
+# 🧹 FILE CLEANER
+elif active_tab == "🧹 Smart File Cleaner":
+    try:
+        from ui.dashboard.file_cleaner.view import render_file_cleaner
+        render_file_cleaner()
+    except ImportError:
+        st.warning("⚠️ File Cleaner module not available.")
+    except Exception as e:
+        st.error(f"File Cleaner Error: {e}")
+
+--- D:\Minor Project\SmartGuard\export_project.py ---
+
+import os
+
+# 🔥 OUTPUT FILE NAME
+OUTPUT_FILE = "project_full_dump.txt"
+
+# ❌ Ignore folders (important)
+IGNORE_DIRS = {
+    "venv", "__pycache__", ".git", "dist", "build",
+    ".idea", ".vscode", "node_modules"
+}
+
+# ✅ Allowed file types
+ALLOWED_EXT = {".py", ".txt", ".md", ".json", ".yaml", ".yml", ".spec"}
+
+
+def write_structure(root, file):
+    file.write("📁 PROJECT STRUCTURE\n")
+    file.write("=" * 50 + "\n\n")
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+
+        level = dirpath.replace(root, "").count(os.sep)
+        indent = " " * 4 * level
+        file.write(f"{indent}{os.path.basename(dirpath)}/\n")
+
+        subindent = " " * 4 * (level + 1)
+        for f in filenames:
+            file.write(f"{subindent}{f}\n")
+
+
+def write_file_contents(root, file):
+    file.write("\n\n📄 FILE CONTENTS\n")
+    file.write("=" * 50 + "\n\n")
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1]
+
+            if ext not in ALLOWED_EXT:
+                continue
+
+            filepath = os.path.join(dirpath, fname)
+
+            file.write(f"\n\n--- {filepath} ---\n\n")
+
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    file.write(f.read())
+            except Exception as e:
+                file.write(f"⚠️ Could not read file: {e}\n")
+
+
+def main():
+    root_dir = os.getcwd()
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as out:
+        write_structure(root_dir, out)
+        write_file_contents(root_dir, out)
+
+    print(f"\n✅ Project exported successfully to {OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+    main()
+
+--- D:\Minor Project\SmartGuard\project_full_dump.txt ---
+
+
+
+--- D:\Minor Project\SmartGuard\requirements.txt ---
+
+psutil
+pandas
+numpy
+scikit-learn
+joblib
+
+pyttsx3
+SpeechRecognition
+PyAudio
+
+streamlit
+plotly
+
+scapy
+
+sounddevice
+plyer
+
+--- D:\Minor Project\SmartGuard\app\bootstrap.py ---
+
+from services.monitor_service import start_monitoring
+from services.alert_service import start_alerts
+from ui.tray_app import start_tray
+
+def start_app():
+    print("🚀 Starting Smart Laptop Analyzer...")
+    
+    start_monitoring()
+    start_alerts()
+    start_tray()
+
+--- D:\Minor Project\SmartGuard\app\main.py ---
+
+from app.bootstrap import start_app
+
+if __name__ == "__main__":
+    start_app()
+
+--- D:\Minor Project\SmartGuard\app\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\core\data_logger.py ---
+
+from features.monitoring.system_info import collect_system_metrics
+from core.database.database import get_connection
+
+def log_system_data():
+    data = collect_system_metrics()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO metrics (cpu, ram, disk, battery)
+    VALUES (?, ?, ?, ?)
+    """, (data["cpu"], data["ram"], data["disk"], data["battery"]))
+
+    conn.commit()
+    conn.close()
+
+--- D:\Minor Project\SmartGuard\core\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\core\config\api_keys.py ---
+
+GEMINI_API_KEY = "AIzaSyB3VG0XXFhopkcDmDjaqcxx0ry-CFk7s94"
+
+--- D:\Minor Project\SmartGuard\core\config\constants.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\core\config\ids_config.py ---
+
+# IDS / IPS Configuration (Production Ready)
+
+# Detection
+WINDOW_SECONDS = 5
+PACKET_THRESHOLD = 20  
+
+# Prevention
+ENABLE_AUTO_BLOCK = False   
+BLOCK_DURATION = 60        
+
+# Environment
+DEMO_MODE = False          
+
+# Trusted networks (never block)
+TRUSTED_PREFIXES = (
+    "127.",        # localhost
+    "10.",         # private
+    "192.168.",    # private
+    "172.16.", "172.17.", "172.18.", "172.19.",
+    "172.20.", "172.21.", "172.22.", "172.23.",
+    "172.24.", "172.25.", "172.26.", "172.27.",
+    "172.28.", "172.29.", "172.30.", "172.31."
+)
+
+
+--- D:\Minor Project\SmartGuard\core\config\settings.json ---
+
+{
+  "hang_alert_enabled": true,
+  "alert_interval": 30,
+  "battery_high_threshold": 80
+}
+
+--- D:\Minor Project\SmartGuard\core\config\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\core\database\database.py ---
+
+import sqlite3
+import os
+
+# Absolute DB path (VERY IMPORTANT)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "system_data.db")
+
+
+def get_connection():
+    return sqlite3.connect(DB_PATH)
+
+
+def create_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        cpu REAL,
+        ram REAL,
+        disk REAL,
+        battery REAL
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+--- D:\Minor Project\SmartGuard\core\database\__init__.py ---
+
+from .database import *
+
+--- D:\Minor Project\SmartGuard\core\logger\logger.py ---
+
+import os
+from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+LOG_FILE = os.path.join(LOG_DIR, "alerts.log")
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# -------------------------------------------------
+# UNIFIED LOGGER (SYSTEM + IDS)
+# -------------------------------------------------
+def log_alert(
+    alert_type: str,
+    source: str = "SYSTEM",
+    cpu: float = 0.0,
+    ram: float = 0.0,
+    disk: float = 0.0,
+    battery: float = 0.0,
+    src_ip: str | None = None,
+    action: str | None = None,
+    extra_info: str = ""
+):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    parts = [ts, source, alert_type]
+
+    if source == "SYSTEM":
+        parts.extend([
+            f"CPU={cpu:.1f}%",
+            f"RAM={ram:.1f}%",
+            f"DISK={disk:.1f}%",
+            f"BATTERY={battery:.0f}%"
+        ])
+
+    if src_ip:
+        parts.append(f"SRC_IP={src_ip}")
+
+    if action:
+        parts.append(f"ACTION={action}")
+
+    if extra_info:
+        parts.append(extra_info)
+
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(" | ".join(parts) + "\n")
+
+
+# -------------------------------------------------
+# READ LATEST ALERT (FOR NOTIFIER)
+# -------------------------------------------------
+def read_latest_alert():
+    """
+    Returns last log line or None
+    """
+    if not os.path.exists(LOG_FILE):
+        return None
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if not lines:
+                return None
+            return lines[-1].strip()
+    except Exception:
+        return None
+
+
+# -------------------------------------------------
+# BACKWARD COMPATIBILITY FOR IDS
+# -------------------------------------------------
+def log_event(label: str, src_ip: str, action: str | None = None):
+    """
+    Legacy IDS wrapper.
+    IDS code calls log_event(), which internally
+    routes everything to the unified log_alert().
+    """
+    log_alert(
+        alert_type=label,
+        source="IDS",
+        src_ip=src_ip,
+        action=action
+    )
+
+
+--- D:\Minor Project\SmartGuard\core\logger\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\core\utils\logger.py ---
+
+import os
+from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+LOG_FILE = os.path.join(LOG_DIR, "alerts.log")
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# -------------------------------------------------
+# UNIFIED LOGGER (SYSTEM + IDS)
+# -------------------------------------------------
+def log_alert(
+    alert_type: str,
+    source: str = "SYSTEM",
+    cpu: float = 0.0,
+    ram: float = 0.0,
+    disk: float = 0.0,
+    battery: float = 0.0,
+    src_ip: str | None = None,
+    action: str | None = None,
+    extra_info: str = ""
+):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    parts = [ts, source, alert_type]
+
+    if source == "SYSTEM":
+        parts.extend([
+            f"CPU={cpu:.1f}%",
+            f"RAM={ram:.1f}%",
+            f"DISK={disk:.1f}%",
+            f"BATTERY={battery:.0f}%"
+        ])
+
+    if src_ip:
+        parts.append(f"SRC_IP={src_ip}")
+
+    if action:
+        parts.append(f"ACTION={action}")
+
+    if extra_info:
+        parts.append(extra_info)
+
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(" | ".join(parts) + "\n")
+
+
+# -------------------------------------------------
+# READ LATEST ALERT (FOR NOTIFIER)
+# -------------------------------------------------
+def read_latest_alert():
+    """
+    Returns last log line or None
+    """
+    if not os.path.exists(LOG_FILE):
+        return None
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if not lines:
+                return None
+            return lines[-1].strip()
+    except Exception:
+        return None
+
+
+# -------------------------------------------------
+# BACKWARD COMPATIBILITY FOR IDS
+# -------------------------------------------------
+def log_event(label: str, src_ip: str, action: str | None = None):
+    """
+    Legacy IDS wrapper.
+    IDS code calls log_event(), which internally
+    routes everything to the unified log_alert().
+    """
+    log_alert(
+        alert_type=label,
+        source="IDS",
+        src_ip=src_ip,
+        action=action
+    )
+
+
+--- D:\Minor Project\SmartGuard\core\utils\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\ai_assistant\ai_assistant.py ---
+
+import psutil
+import time
+from google import genai
+# from core.monitor import collect_system_metrics
+from features.monitoring.monitor import collect_system_metrics
+from core.config.api_keys import GEMINI_API_KEY
+
+# ✅ Initialize client
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# 🧠 Memory
+conversation_history = []
+
+
+def get_ai_response(user_query):
+
+    metrics = collect_system_metrics()
+
+    # 🔥 Top processes
+    processes = sorted(
+        [(p.info['name'], p.info['cpu_percent']) 
+         for p in psutil.process_iter(['name', 'cpu_percent'])],
+        key=lambda x: x[1],
+        reverse=True
+    )[:5]
+
+    # 🔁 Conversation memory
+    conversation_history.append(f"User: {user_query}")
+    history_text = "\n".join(conversation_history[-5:])
+
+    # 🧠 Smart prompt
+    prompt = f"""
+You are an advanced AI system assistant.
+
+Conversation History:
+{history_text}
+
+System Data:
+CPU: {metrics['cpu']}%
+RAM: {metrics['ram']}%
+Disk: {metrics['disk']}%
+Battery: {metrics['battery']}%
+
+Top CPU Processes:
+{processes}
+
+User Question:
+{user_query}
+
+Rules:
+- Answer based on real system data
+- Be specific
+- Keep it short and practical
+"""
+
+    # 🔁 Retry logic
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3-flash-preview",   
+                contents=prompt
+            )
+
+            text = response.text
+
+            if text:
+                conversation_history.append(f"AI: {text}")
+                return text
+
+        except Exception as e:
+            print(f"Attempt {attempt+1} failed:", e)
+            time.sleep(2)
+
+    return "AI assistant is busy. Try again."
+
+--- D:\Minor Project\SmartGuard\features\ai_assistant\ai_brain.py ---
+
+def analyze(metrics, prediction, intrusion):
+
+    actions = []
+    message = ""
+
+    # 🔋 Battery
+    if metrics["battery"] < 20:
+        message = "Battery is low, please plug charger"
+        actions.append("speak")
+
+    # ⚠️ Hang risk
+    elif prediction == 2:
+        message = "System may hang, closing heavy apps"
+        actions.append("kill_apps")
+
+    # 🛡️ Intrusion
+    elif intrusion:
+        message = "Attack detected, blocking IP"
+        actions.append("block_ip")
+
+    else:
+        message = "System running normally"
+
+    return message, actions
+
+--- D:\Minor Project\SmartGuard\features\ai_assistant\predictor.py ---
+
+def predict_system_state(model, features_df):
+    if features_df is None or features_df.empty:
+        return 0, False  # Normal, ML not used
+
+    cpu = features_df["cpu_usage"].iloc[0]
+    ram = features_df["ram_usage"].iloc[0]
+    disk = features_df["disk_usage"].iloc[0]
+
+    # Rule fallback
+    if cpu > 85 and ram > 90:
+        return 2, False
+    if cpu > 70 or ram > 80:
+        return 1, False
+
+    if model is None:
+        return 0, False
+
+    try:
+        pred = model.predict(features_df)[0]
+        return pred, True
+    except Exception:
+        return 0, False
+
+
+--- D:\Minor Project\SmartGuard\features\ai_assistant\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\alerting\alert_notifier.py ---
+
+import os
+import sys
+import time
+import winsound
+from plyer import notification
+from core.utils.logger import read_latest_alert
+
+# -------------------------------------------------
+# ADD PROJECT ROOT TO PATH
+# -------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
+
+
+
+SEEN = set()
+
+def notify(alert: str):
+    winsound.Beep(1200, 600)
+    notification.notify(
+        title="🛡 SmartCyberGuard Alert",
+        message=alert,
+        timeout=6
+    )
+
+print("🔔 Alert notifier started (listening for REAL threats only)")
+
+while True:
+    alert = read_latest_alert()
+
+    if not alert:
+        time.sleep(2)
+        continue
+
+    if alert in SEEN:
+        time.sleep(2)
+        continue
+
+    alert_lower = alert.lower()
+
+    # ❌ Ignore normal traffic
+    if "normal" in alert_lower:
+        SEEN.add(alert)
+        time.sleep(2)
+        continue
+
+    # ❌ Ignore self traffic
+    if "src_ip=10." in alert_lower or "src_ip=192.168." in alert_lower:
+        SEEN.add(alert)
+        time.sleep(2)
+        continue
+
+    # ✅ REAL ALERT
+    notify(alert)
+    SEEN.add(alert)
+
+    time.sleep(2)
+
+
+--- D:\Minor Project\SmartGuard\features\alerting\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\feature_extractor.py ---
+
+from scapy.all import IP, TCP, UDP
+from schema.feature_schema import encode_protocol, encode_flag
+
+def extract_features(packet):
+    try:
+        ip = packet[IP]
+        src_ip = ip.src
+
+        protocol = "tcp" if TCP in packet else "udp" if UDP in packet else "icmp"
+        flag = "SF"
+
+        features = {
+            "duration": 0,
+            "protocol_type": encode_protocol(protocol),
+            "flag": encode_flag(flag),
+            "src_bytes": len(packet),
+            "dst_bytes": 0,
+            "land": int(ip.src == ip.dst),
+            "wrong_fragment": 0,
+            "urgent": 0,
+            "hot": 0,
+            "num_failed_logins": 0,
+            "logged_in": 0,
+            "num_compromised": 0,
+            "root_shell": 0,
+            "su_attempted": 0,
+            "num_file_creations": 0,
+            "num_shells": 0,
+            "num_access_files": 0,
+            "is_guest_login": 0,
+            "count": 1,
+            "srv_count": 1,
+            "serror_rate": 0.0,
+            "rerror_rate": 0.0,
+            "same_srv_rate": 1.0,
+            "diff_srv_rate": 0.0,
+            "srv_diff_host_rate": 0.0,
+            "dst_host_count": 1,
+            "dst_host_srv_count": 1,
+            "dst_host_diff_srv_rate": 0.0,
+            "dst_host_same_src_port_rate": 1.0,
+            "dst_host_srv_diff_host_rate": 0.0,
+        }
+
+        return src_ip, features
+
+    except Exception:
+        return None, None
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\ids_engine.py ---
+
+from scapy.all import IP, TCP, UDP, ICMP
+from features.anomaly_detection.rule_engine import rule_based_detection
+from features.anomaly_detection.prevention_engine import block_ip, unblock_expired_ips
+from core.utils.logger import log_event, log_alert
+
+def extract_features(packet):
+    return {
+        "packet_size": len(packet),
+        "protocol": packet.proto if IP in packet else 0
+    }
+
+def process_packet(packet):
+    if IP not in packet:
+        return
+
+    src_ip = packet[IP].src
+    features = extract_features(packet)
+
+    alert = rule_based_detection(features, src_ip)
+
+    if alert:
+        block_ip(src_ip)
+        
+
+        log_alert(
+            alert_type=alert,
+            source="IDS",
+            src_ip=src_ip,
+            action="BLOCKED"
+        )
+
+        print(f"[ALERT] {alert} | {src_ip} | BLOCKED")
+    else:
+        log_event("normal", src_ip)
+
+    unblock_expired_ips()
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\network_sniffer.py ---
+
+from scapy.all import sniff, IP
+from features.anomaly_detection.rule_engine import rule_based_detection
+from features.anomaly_detection.prevention_engine import block_ip, unblock_expired_ips
+from core.config.ids_config import ENABLE_AUTO_BLOCK
+
+def process_packet(packet):
+    if IP not in packet:
+        return
+
+    src_ip = packet[IP].src
+
+    detected = rule_based_detection(src_ip)
+
+    if detected:
+        if ENABLE_AUTO_BLOCK:
+            block_ip(src_ip)
+            log_event(
+                label="possible_dos",
+                src_ip=src_ip,
+                action="BLOCKED"
+            )
+        else:
+            log_event(
+                label="possible_dos",
+                src_ip=src_ip,
+                action="DETECTED"
+            )
+    else:
+        log_event("normal", src_ip)
+
+    unblock_expired_ips()
+
+def start_sniffing(interface=None):
+    sniff(
+        prn=process_packet,
+        iface=interface,
+        store=False
+    )
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\prevention_engine.py ---
+
+import subprocess
+import time
+from core.config.ids_config import BLOCK_DURATION
+
+BLOCKED_IPS = {}
+
+def block_ip(ip: str):
+    if ip in BLOCKED_IPS:
+        return
+
+    cmd = (
+        f'netsh advfirewall firewall add rule '
+        f'name="CyberGuard_Block_{ip}" '
+        f'dir=in action=block remoteip={ip}'
+    )
+
+    subprocess.run(
+        cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    BLOCKED_IPS[ip] = time.time()
+
+def unblock_expired_ips():
+    now = time.time()
+
+    for ip, ts in list(BLOCKED_IPS.items()):
+        if now - ts > BLOCK_DURATION:
+            cmd = (
+                f'netsh advfirewall firewall delete rule '
+                f'name="CyberGuard_Block_{ip}"'
+            )
+            subprocess.run(
+                cmd,
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            del BLOCKED_IPS[ip]
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\rule_engine.py ---
+
+import time
+from collections import defaultdict, deque
+from core.config.ids_config import (
+    WINDOW_SECONDS,
+    PACKET_THRESHOLD,
+    TRUSTED_PREFIXES
+)
+
+IP_ACTIVITY = defaultdict(deque)
+LAST_ALERT = {}
+
+def is_trusted_ip(ip: str) -> bool:
+    return ip.startswith(TRUSTED_PREFIXES)
+
+def rule_based_detection(src_ip: str) -> bool:
+    if is_trusted_ip(src_ip):
+        return False
+
+    now = time.time()
+    q = IP_ACTIVITY[src_ip]
+    q.append(now)
+
+    # sliding window
+    while q and now - q[0] > WINDOW_SECONDS:
+        q.popleft()
+
+    if len(q) >= PACKET_THRESHOLD:
+        last = LAST_ALERT.get(src_ip, 0)
+        if now - last > WINDOW_SECONDS:
+            LAST_ALERT[src_ip] = now
+            return True
+
+    return False
+
+
+--- D:\Minor Project\SmartGuard\features\anomaly_detection\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\monitoring\data_fetcher.py ---
+
+# core/database.py
+from core.database.database import *
+import pandas as pd
+
+def fetch_metrics():
+    conn = get_connection()
+
+    df = pd.read_sql_query(
+        "SELECT * FROM metrics ORDER BY timestamp DESC LIMIT 50",
+        conn
+    )
+
+    conn.close()
+    return df
+
+--- D:\Minor Project\SmartGuard\features\monitoring\monitor.py ---
+
+# core/monitor.py
+
+import psutil
+import sys
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+
+def collect_system_metrics():
+    """
+    Collects real-time system metrics
+    Returns a dictionary
+    """
+
+    cpu = psutil.cpu_percent(interval=1)
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+
+    disk_io = psutil.disk_io_counters()
+    try:
+        battery = psutil.sensors_battery()
+        battery_pct = battery.percent if battery else 0
+    except (FileNotFoundError, NotImplementedError):
+        battery_pct = 0
+
+    process_count = len(list(psutil.process_iter()))
+
+    return {
+        "cpu": cpu,
+        "ram": ram,
+        "disk": disk,
+        "disk_read": disk_io.read_bytes,
+        "disk_write": disk_io.write_bytes,
+        "battery": battery_pct,
+        "process_count": process_count
+    }
+
+
+
+--- D:\Minor Project\SmartGuard\features\monitoring\system_info.py ---
+
+import psutil
+
+def collect_system_metrics():
+    return {
+        "cpu": psutil.cpu_percent(interval=1),
+        "ram": psutil.virtual_memory().percent,
+        "disk": psutil.disk_usage('/').percent,
+        "battery": psutil.sensors_battery().percent if psutil.sensors_battery() else 0
+    }
+
+--- D:\Minor Project\SmartGuard\features\monitoring\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\system_control\prevention.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\system_control\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\assistant.py ---
+
+from features.voice_assistant.input import listen
+from features.voice_assistant.output import speak
+from features.ai_assistant.ai_assistant import get_ai_response
+from features.monitoring.monitor import collect_system_metrics
+
+
+
+def fallback_response(cmd):
+    metrics = collect_system_metrics()
+
+    if "cpu" in cmd:
+        return f"CPU usage is {metrics['cpu']} percent"
+
+    elif "ram" in cmd:
+        return f"RAM usage is {metrics['ram']} percent"
+
+    elif "battery" in cmd:
+        return f"Battery is at {metrics['battery']} percent"
+
+    elif "slow" in cmd:
+        if metrics["ram"] > 75:
+            return "System is slow because RAM usage is high"
+        return "System is running fine"
+
+    elif "hello" in cmd:
+        return "Hello Varun, I am your AI assistant"
+
+    return None
+
+
+def start_voice_assistant():
+    speak("AI assistant started. You can speak now.")
+
+    while True:
+        cmd = listen()
+
+        if not cmd:
+            continue
+
+        print("User:", cmd)
+
+        if "exit" in cmd or "stop" in cmd:
+            speak("Shutting down assistant")
+            break
+
+        # 🧠 AI FIRST
+        try:
+            response = get_ai_response(cmd)
+
+            if response and len(response.strip()) > 0:
+                clean_response = response.strip().replace("\n", " ")
+                clean_response = clean_response[:300]
+
+                speak(clean_response)
+
+                import time
+                time.sleep(0.5)
+
+                continue
+
+        except Exception as e:
+            print("AI error:", e)
+
+        # 🟡 FALLBACK
+        fallback = fallback_response(cmd)
+
+        if fallback:
+            speak(fallback)
+        else:
+            speak("Sorry, I did not understand")
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\input.py ---
+
+import speech_recognition as sr
+
+def listen():
+    recognizer = sr.Recognizer()
+
+    with sr.Microphone() as source:
+        print("🎤 Listening...")
+        recognizer.adjust_for_ambient_noise(source)
+
+        try:
+            audio = recognizer.listen(source, timeout=5)
+            text = recognizer.recognize_google(audio)
+            print("You:", text)
+            return text.lower()
+
+        except:
+            return ""
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\output.py ---
+
+import pyttsx3
+
+engine = pyttsx3.init()
+
+engine.setProperty('rate', 160)
+engine.setProperty('volume', 1.0)
+
+voices = engine.getProperty('voices')
+engine.setProperty('voice', voices[0].id)
+
+
+def speak(text):
+    if not text:
+        return
+
+    try:
+        print("AI:", text)
+
+        engine.stop()   # 🔥 reset engine
+        engine.say(str(text))
+        engine.runAndWait()
+
+    except Exception as e:
+        print("Voice error:", e)
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\voice_service.py ---
+
+from features.voice_assistant.assistant import start_voice_assistant
+
+start_voice_assistant()
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\wake_word.py ---
+
+import speech_recognition as sr
+
+WAKE_WORD = "hey"
+
+def listen_for_wake_word():
+    recognizer = sr.Recognizer()
+
+    with sr.Microphone() as source:
+        print("👂 Waiting for wake word...")
+        recognizer.adjust_for_ambient_noise(source)
+
+        try:
+            audio = recognizer.listen(source, timeout=5)
+            text = recognizer.recognize_google(audio).lower()
+            print("Heard:", text)
+
+            return WAKE_WORD in text
+
+        except:
+            return False
+
+--- D:\Minor Project\SmartGuard\features\voice_assistant\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\schema\feature_schema.py ---
+
+FEATURE_ORDER = [
+    'duration','protocol_type','flag','src_bytes','dst_bytes','land',
+    'wrong_fragment','urgent','hot','num_failed_logins','logged_in',
+    'num_compromised','root_shell','su_attempted','num_file_creations',
+    'num_shells','num_access_files','is_guest_login','count','srv_count',
+    'serror_rate','rerror_rate','same_srv_rate','diff_srv_rate',
+    'srv_diff_host_rate','dst_host_count','dst_host_srv_count',
+    'dst_host_diff_srv_rate','dst_host_same_src_port_rate',
+    'dst_host_srv_diff_host_rate'
+]
+
+PROTOCOL_MAP = {"icmp": 0, "tcp": 1, "udp": 2}
+FLAG_MAP = {"SF": 0, "S0": 1, "REJ": 2}
+
+def encode_protocol(p):
+    return PROTOCOL_MAP.get(p, 1)
+
+def encode_flag(f):
+    return FLAG_MAP.get(f, 0)
+
+
+--- D:\Minor Project\SmartGuard\schema\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\services\background_monitor.py ---
+
+# --------------------------------
+# SmartCyberGuard Background Agent (AI Powered)
+# --------------------------------
+
+# ===== SINGLE INSTANCE (WINDOWS MUTEX) =====
+import sys
+import ctypes
+
+kernel32 = ctypes.windll.kernel32
+
+mutex = kernel32.CreateMutexW(
+    None,
+    True,
+    "SmartCyberGuard_BackgroundMonitor"
+)
+
+ERROR_ALREADY_EXISTS = 183
+
+if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+    sys.exit(0)
+
+# ===== STANDARD IMPORTS =====
+import os
+import time
+import threading
+import pandas as pd
+import joblib
+
+# ===== PATH HANDLING =====
+if hasattr(sys, "_MEIPASS"):
+    BASE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+# ===== PROJECT IMPORTS =====
+from features.monitoring.monitor import collect_system_metrics
+from features.ai_assistant.predictor import predict_system_state
+from features.anomaly_detection.network_sniffer import start_sniffing
+from features.ai_assistant.ai_brain import analyze
+# from core.action_engine import execute
+# from core.voice.output import speak
+from core.logger.logger import log_alert
+
+# from utils.data_logger import log_system_data
+
+# ===== RESOURCE PATH =====
+def resource_path(relative_path: str) -> str:
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(BASE_DIR, relative_path)
+
+# ===== LOAD ML MODEL =====
+model = None
+try:
+    model = joblib.load(resource_path("models/model.pkl"))
+    log_alert(
+        alert_type="MODEL_LOADED",
+        source="AGENT",
+        extra_info="ML model loaded"
+    )
+except Exception as e:
+    log_alert(
+        alert_type="MODEL_FALLBACK",
+        source="AGENT",
+        extra_info=str(e)
+    )
+
+# ===== START IDS THREAD =====
+ids_thread = threading.Thread(
+    target=start_sniffing,
+    daemon=True
+)
+ids_thread.start()
+
+log_alert(
+    alert_type="IDS_STARTED",
+    source="AGENT",
+    extra_info="IDS running"
+)
+
+# ===== SPEAK CONTROL (ANTI-SPAM) =====
+LAST_SPOKEN = ""
+LAST_SPOKEN_TIME = 0
+SPEAK_COOLDOWN = 15  # seconds
+
+def safe_speak(message):
+    global LAST_SPOKEN, LAST_SPOKEN_TIME
+
+    now = time.time()
+
+    # prevent repeating same message
+    if message == LAST_SPOKEN and (now - LAST_SPOKEN_TIME < SPEAK_COOLDOWN):
+        return
+
+    LAST_SPOKEN = message
+    LAST_SPOKEN_TIME = now
+
+    speak(message)
+
+# ===== MAIN LOOP =====
+print("🚀 SmartCyberGuard AI Agent Started")
+
+while True:
+    try:
+        # 1️⃣ Collect metrics
+        metrics = collect_system_metrics()
+
+        log_system_data(metrics)
+
+        # 2️⃣ Prepare ML features
+        features_df = pd.DataFrame([{
+            "cpu_usage": metrics["cpu"],
+            "ram_usage": metrics["ram"],
+            "disk_usage": metrics["disk"],
+            "disk_read": metrics["disk_read"],
+            "disk_write": metrics["disk_write"],
+            "battery_percent": metrics["battery"],
+            "process_count": metrics["process_count"],
+            "heavy_process_count": 0
+        }])
+
+        # 3️⃣ Predict system state
+        pred, ml_available = predict_system_state(model, features_df)
+
+        # 4️⃣ Intrusion flag (basic for now)
+        intrusion_detected = False   # future: connect with IDS output
+
+        # 5️⃣ AI BRAIN DECISION
+        message, actions = analyze(metrics, pred, intrusion_detected)
+
+        # 6️⃣ Speak intelligently
+        safe_speak(message)
+
+        # 7️⃣ Execute actions
+        for action in actions:
+            execute(action)
+
+        # 8️⃣ Logging important events
+        if pred == 2:
+            log_alert(
+                alert_type="HANG_RISK",
+                source="SYSTEM",
+                cpu=metrics["cpu"],
+                ram=metrics["ram"],
+                disk=metrics["disk"],
+                battery=metrics["battery"],
+                extra_info="ML" if ml_available else "RULE"
+            )
+
+        if metrics["battery"] < 20:
+            log_alert(
+                alert_type="LOW_BATTERY",
+                source="SYSTEM",
+                battery=metrics["battery"]
+            )
+
+        # 9️⃣ Wait
+        time.sleep(5)
+
+    except Exception as e:
+        log_alert(
+            alert_type="AGENT_ERROR",
+            source="AGENT",
+            extra_info=str(e)
+        )
+        time.sleep(5)
+
+--- D:\Minor Project\SmartGuard\services\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\ui\tray_app.py ---
+
+import pystray
+from pystray import MenuItem as item
+from PIL import Image
+import subprocess
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+PYTHONW = os.path.join(ROOT, "venv", "Scripts", "pythonw.exe")
+PYTHON = os.path.join(ROOT, "venv", "Scripts", "python.exe")
+
+BG_MONITOR = os.path.join(ROOT, "services", "background_monitor.py")
+ALERT = os.path.join(ROOT, "services", "alert_notifier.py")
+APP = os.path.join(ROOT, "app.py")
+ICON = os.path.join(ROOT, "assets", "icon.png")
+
+processes = []
+
+def start_background():
+    processes.append(subprocess.Popen([PYTHONW, BG_MONITOR]))
+    processes.append(subprocess.Popen([PYTHONW, ALERT]))
+
+def open_dashboard():
+    subprocess.Popen([PYTHON, "-m", "streamlit", "run", APP])
+
+def exit_app(icon, item):
+    for p in processes:
+        p.kill()
+    icon.stop()
+    sys.exit()
+
+def setup_tray():
+    image = Image.open(ICON)
+    menu = (
+        item("📊 Open Dashboard", open_dashboard),
+        item("❌ Exit", exit_app),
+    )
+
+    icon = pystray.Icon("SmartCyberGuard", image, "Smart Cyber Guard", menu)
+    start_background()
+    icon.run()
+
+if __name__ == "__main__":
+    setup_tray()
+
+
+--- D:\Minor Project\SmartGuard\ui\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\analytics.py ---
+
+import streamlit as st
+import plotly.express as px
+from features.monitoring.data_fetcher import fetch_metrics
+
+def show_analytics():
+    st.subheader("📊 System Analytics")
+
+    df = fetch_metrics()
+
+    if df.empty:
+        st.warning("No data available yet. Please wait...")
+        return
+
+    df = df.sort_values(by="timestamp")
+
+    # CPU Graph
+    fig_cpu = px.line(df, x="timestamp", y="cpu", title="CPU Usage (%)")
+    st.plotly_chart(fig_cpu, use_container_width=True)
+
+    # RAM Graph
+    fig_ram = px.line(df, x="timestamp", y="ram", title="RAM Usage (%)")
+    st.plotly_chart(fig_ram, use_container_width=True)
+
+    # Disk Graph
+    fig_disk = px.line(df, x="timestamp", y="disk", title="Disk Usage (%)")
+    st.plotly_chart(fig_disk, use_container_width=True)
+
+    # Battery Graph
+    fig_battery = px.line(df, x="timestamp", y="battery", title="Battery (%)")
+    st.plotly_chart(fig_battery, use_container_width=True)
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\analyzer_app.py ---
+
+import os
+import sys
+import time
+import threading
+import streamlit as st
+import pandas as pd
+import joblib
+
+# ===============================
+# 🔥 PROJECT ROOT FIX (CORRECT)
+# ===============================
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../")
+)
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# ===============================
+# PROJECT IMPORTS
+# ===============================
+from features.monitoring.monitor import collect_system_metrics
+from features.anomaly_detection.network_sniffer import start_sniffing
+from core.utils.logger import log_alert   # ✅ FIXED PATH
+
+# ===============================
+# STREAMLIT CONFIG
+# ===============================
+st.set_page_config(
+    page_title="SmartCyberGuard",
+    layout="wide"
+)
+
+st.title("🛡️ SmartCyberGuard – Laptop Health Analyzer")
+
+# ===============================
+# LOAD ML MODEL (SAFE)
+# ===============================
+MODEL = None
+MODEL_ERROR = None
+
+try:
+    MODEL = joblib.load(os.path.join(PROJECT_ROOT, "models", "model.pkl"))
+except Exception as e:
+    MODEL_ERROR = str(e)
+
+# ===============================
+# SESSION STATE
+# ===============================
+if "ids_started" not in st.session_state:
+    st.session_state.ids_started = False
+
+# ===============================
+# IDS THREAD (RUN ONCE)
+# ===============================
+def start_ids_once():
+    if not st.session_state.ids_started:
+        t = threading.Thread(target=start_sniffing, daemon=True)
+        t.start()
+        st.session_state.ids_started = True
+
+        log_alert(
+            alert_type="IDS_STARTED",
+            source="UI",
+            extra_info="IDS thread started"
+        )
+
+start_ids_once()
+
+# ===============================
+# METRICS FUNCTION
+# ===============================
+def get_metrics():
+    try:
+        m = collect_system_metrics()
+        return {
+            "cpu_usage": m.get("cpu", 0.0),
+            "ram_usage": m.get("ram", 0.0),
+            "disk_usage": m.get("disk", 0.0),
+            "disk_read": m.get("disk_read", 0),
+            "disk_write": m.get("disk_write", 0),
+            "battery_percent": m.get("battery", 0),
+            "process_count": m.get("process_count", 0),
+            "heavy_process_count": 0
+        }
+    except Exception as e:
+        log_alert(
+            alert_type="METRICS_ERROR",
+            source="UI",
+            extra_info=str(e)
+        )
+        return None
+
+# ===============================
+# SIDEBAR
+# ===============================
+refresh = st.sidebar.slider(
+    "Refresh interval (seconds)",
+    min_value=2,
+    max_value=10,
+    value=5
+)
+
+placeholder = st.empty()
+
+# ===============================
+# 🔥 MAIN LOOP (SAFE STREAMLIT WAY)
+# ===============================
+while True:
+    data = get_metrics()
+
+    with placeholder.container():
+
+        if not data:
+            st.error("❌ Failed to collect system metrics")
+            time.sleep(refresh)
+            continue
+
+        df = pd.DataFrame([data])
+
+        # Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("CPU %", data["cpu_usage"])
+        col2.metric("RAM %", data["ram_usage"])
+        col3.metric("Disk %", data["disk_usage"])
+        col4.metric("Battery %", data["battery_percent"])
+
+        st.subheader("📊 System Metrics")
+        st.dataframe(df, use_container_width=True)
+
+        # ML Prediction
+        st.subheader("🧠 ML Prediction")
+
+        if MODEL_ERROR:
+            st.error(f"❌ ML model not loaded: {MODEL_ERROR}")
+        else:
+            try:
+                pred = MODEL.predict(df)[0]
+
+                state_map = {
+                    0: "Normal",
+                    1: "High Load",
+                    2: "Hang Risk"
+                }
+
+                state = state_map.get(pred, "Unknown")
+
+                if pred == 2:
+                    st.error(f"🚨 {state}")
+                elif pred == 1:
+                    st.warning(f"⚠️ {state}")
+                else:
+                    st.success(f"✅ {state}")
+
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
+
+    time.sleep(refresh)
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\chatbot\view.py ---
+
+import streamlit as st
+from features.ai_assistant.ai_assistant import get_ai_response
+from features.voice_assistant.input import listen
+from features.voice_assistant.output import speak
+
+
+def render_chatbot():
+
+    st.header("🤖 AI System Assistant")
+
+    # =========================
+    # 🔁 CHAT HISTORY
+    # =========================
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # =========================
+    # 🎨 CSS (MIC INSIDE INPUT)
+    # =========================
+    st.markdown("""
+    <style>
+    /* Chat input container */
+    div[data-testid="stChatInput"] {
+        position: relative;
+    }
+
+    /* Mic button styling */
+    div[data-testid="stChatInput"] button {
+        border-radius: 50% !important;
+    }
+
+    /* Adjust spacing so mic looks inside */
+    div[data-testid="stChatInput"] input {
+        padding-right: 60px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # =========================
+    # 💬 DISPLAY CHAT
+    # =========================
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # =========================
+    # 🎤 MIC BUTTON (OVERLAY STYLE)
+    # =========================
+    mic_col1, mic_col2 = st.columns([9, 1])
+
+    with mic_col2:
+        mic_clicked = st.button("🎤")
+
+    # =========================
+    # 💬 CHAT INPUT (UNCHANGED)
+    # =========================
+    user_input = st.chat_input("Ask about your system...")
+
+    # =========================
+    # 🎤 HANDLE VOICE INPUT
+    # =========================
+    if mic_clicked:
+        with st.spinner("Listening..."):
+            voice_input = listen()
+
+        if voice_input:
+            user_input = voice_input
+
+    # =========================
+    # 🚀 PROCESS INPUT
+    # =========================
+    if user_input:
+
+        # Show user message
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input
+        })
+
+        # 🤖 AI RESPONSE
+        with st.spinner("Thinking..."):
+            response = get_ai_response(user_input)
+
+        clean_response = response.strip().replace("\n", " ")[:]
+
+        # Show AI message
+        with st.chat_message("assistant"):
+            st.markdown(clean_response)
+
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": clean_response
+        })
+
+        # 🔊 SPEAK
+        speak(clean_response)
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\components\alerts.py ---
+
+import streamlit as st
+
+
+def play_alert_sound():
+    st.markdown(
+        """
+        <audio autoplay>
+            <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg">
+        </audio>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_alerts(
+    pred,
+    hang_alert_enabled,
+    alert_interval,
+    show_xai=False,
+    xai_explanation=None
+):
+    if pred == 1:
+        st.warning("⚠️ System under high load.")
+
+    elif pred == 2 and hang_alert_enabled and alert_interval > 0:
+        st.error("🚨 HIGH RISK OF SYSTEM HANG!")
+        st.markdown("⏳ **Risk Window:** Next 5–10 minutes")
+        st.toast("Hang risk detected! Save your work.", icon="🚨")
+        play_alert_sound()
+
+        if show_xai and xai_explanation:
+            with st.expander("🧠 Why this was detected?"):
+                for label, percent in xai_explanation:
+                    st.write(f"• **{label}** ({percent}%)")
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\components\ids_panel.py ---
+
+import streamlit as st
+import pandas as pd
+import os
+
+def render_ids_panel():
+    st.subheader("🛡️ Intrusion Detection System")
+
+    log_file = "logs/ids.log"
+    if not os.path.exists(log_file):
+        st.info("No IDS activity detected yet.")
+        return
+
+    df = pd.read_csv(
+        log_file,
+        sep="|",
+        names=["time","event"],
+        engine="python"
+    )
+
+    alerts = df[df.event.str.contains("ALERT")]
+
+    if alerts.empty:
+        st.success("Network traffic is normal.")
+    else:
+        st.error("⚠️ Intrusion detected!")
+        st.dataframe(alerts.tail(10), use_container_width=True)
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\components\metrics.py ---
+
+import streamlit as st
+
+
+def render_metrics(cpu, ram, disk, battery):
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric("CPU %", f"{cpu:.1f}")
+    c2.metric("RAM %", f"{ram:.1f}")
+    c3.metric("Disk %", f"{disk:.1f}")
+    c4.metric(
+        "Battery %",
+        f"{battery:.0f}" if battery != -1 else "N/A"
+    )
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\components\sidebar.py ---
+
+import streamlit as st
+import json
+import os
+
+
+def load_sidebar_settings(settings_path):
+    with open(settings_path, "r") as f:
+        settings = json.load(f)
+
+    st.sidebar.header("⚙️ Alert Settings")
+
+    hang_alert_enabled = st.sidebar.toggle(
+        "Enable Hang Alerts",
+        value=settings["hang_alert_enabled"],
+        key="hang_alert_toggle"
+    )
+
+    alert_interval = st.sidebar.selectbox(
+        "Alert Interval (seconds)",
+        options=[30, 60, 0],
+        index=[30, 60, 0].index(settings["alert_interval"])
+    )
+
+    battery_threshold = st.sidebar.selectbox(
+        "Battery High Threshold (%)",
+        options=[70, 80, 90],
+        index=[70, 80, 90].index(settings["battery_high_threshold"])
+    )
+
+    new_settings = {
+        "hang_alert_enabled": hang_alert_enabled,
+        "alert_interval": alert_interval,
+        "battery_high_threshold": battery_threshold
+    }
+
+    if new_settings != settings:
+        with open(settings_path, "w") as f:
+            json.dump(new_settings, f, indent=2)
+
+    return new_settings
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\components\tables.py ---
+
+# dashboard/components/tables.py
+
+import streamlit as st
+import psutil
+import pandas as pd
+
+# ---------------- PROCESS → APP NAME MAP ----------------
+PROCESS_APP_MAP = {
+    "chrome.exe": "Google Chrome",
+    "Code.exe": "Visual Studio Code",
+    "python.exe": "Python Application",
+    "msedgewebview2.exe": "Microsoft Edge (Background)",
+    "taskmgr.exe": "Task Manager",
+    "Taskmgr.exe": "Task Manager",
+    "MsMpEng.exe": "Windows Defender",
+    "dwm.exe": "Windows Display Manager",
+    "System Idle Process": "System Idle (CPU Free)",
+    "explorer.exe": "File Explorer"
+}
+
+# -------------------------------------------------------
+def get_top_heavy_processes(limit=5):
+    """
+    Returns DataFrame of top CPU-consuming applications
+    """
+    rows = []
+
+    for proc in psutil.process_iter(
+        ['name', 'cpu_percent', 'memory_percent']
+    ):
+        try:
+            name = proc.info['name']
+            cpu = proc.info['cpu_percent']
+            mem = proc.info['memory_percent']
+
+            if cpu and cpu > 1:
+                app_name = PROCESS_APP_MAP.get(name, name)
+                rows.append([
+                    app_name,
+                    name,
+                    round(cpu, 1),
+                    round(mem, 2)
+                ])
+        except:
+            pass
+
+    df = pd.DataFrame(
+        rows,
+        columns=["Application", "Process", "CPU %", "RAM %"]
+    )
+
+    if df.empty:
+        return df
+
+    return df.sort_values("CPU %", ascending=False).head(limit)
+
+
+# -------------------------------------------------------
+def render_resource_table(df):
+    """
+    Renders top resource consuming apps table
+    """
+    st.subheader("🔥 Top Resource-Consuming Applications")
+
+    if df.empty:
+        st.info("No heavy applications detected.")
+    else:
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\file_cleaner\file_cleaner.py ---
+
+import os
+import time
+
+USER_PATH = os.path.expanduser("~")
+
+FOLDERS_TO_SCAN = [
+    os.path.join(USER_PATH, "Downloads"),
+    os.path.join(USER_PATH, "Desktop"),
+    os.path.join(USER_PATH, "AppData", "Local", "Temp")
+]
+
+def scan_files(folders):
+    files_data = []
+
+    for folder in folders:
+        if not os.path.exists(folder):
+            continue
+
+        for root, dirs, files in os.walk(folder):
+            for file in files:
+                try:
+                    file_path = os.path.join(root, file)
+                    
+                    size = os.path.getsize(file_path)
+                    modified_time = os.path.getmtime(file_path)
+
+                    files_data.append({
+                        "path": file_path,
+                        "size": size,
+                        "last_modified": modified_time
+                    })
+
+                except:
+                    continue
+
+    return files_data
+
+
+def format_size(size):
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+
+
+
+def analyze_files(files):
+    current_time = time.time()
+
+    results = []
+
+    for f in files:
+        age_days = (current_time - f["last_modified"]) / (60 * 60 * 24)
+        size_mb = f["size"] / (1024 * 1024)
+
+        category = "Important"
+
+        # Rule-based classification
+        if "Temp" in f["path"]:
+            category = "Safe"
+
+        elif age_days > 30 and size_mb > 50:
+            category = "Maybe"
+
+        elif age_days > 60:
+            category = "Safe"
+
+        elif size_mb > 100:
+            category = "Maybe"
+
+        elif age_days < 7:
+            category = "Important"
+
+        results.append({
+            "path": f["path"],
+            "size": f["size"],
+            "age_days": age_days,
+            "category": category
+        })
+
+    return results
+
+
+def delete_files(files):
+    deleted = 0
+    failed = 0
+
+    for f in files:
+        try:
+            os.remove(f["path"])
+            deleted += 1
+        except:
+            failed += 1
+
+    return deleted, failed
+
+
+def get_safe_files(analyzed_files):
+    safe_files = [f for f in analyzed_files if f["category"] == "Safe"]
+
+    total_size = sum(f["size"] for f in safe_files)
+
+    return safe_files, total_size
+
+
+if __name__ == "__main__":
+    files = scan_files(FOLDERS_TO_SCAN)
+    analyzed = analyze_files(files)
+
+    safe_files, total_size = get_safe_files(analyzed)
+
+    print(f"\n🟢 Safe files: {len(safe_files)}")
+    print(f"💾 Total space to free: {format_size(total_size)}\n")
+
+    # Show first few safe files
+    for f in safe_files[:10]:
+        print(f["path"])
+
+    # Confirmation
+    confirm = input("\nDo you want to delete these files? (yes/no): ")
+
+    if confirm.lower() == "yes":
+        deleted, failed = delete_files(safe_files)
+        print(f"\n✅ Deleted: {deleted} files")
+        print(f"❌ Failed: {failed} files")
+    else:
+        print("\n❌ Deletion cancelled")
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\file_cleaner\view.py ---
+
+import streamlit as st
+import os
+import subprocess
+
+from ui.dashboard.file_cleaner.file_cleaner import (
+    scan_files,
+    analyze_files,
+    get_safe_files,
+    delete_files,
+    format_size,
+    FOLDERS_TO_SCAN
+)
+
+# from features.cleaner.file_cleaner import *
+
+
+# -----------------------------
+# Open File Function
+# -----------------------------
+def open_file(path):
+    try:
+        os.startfile(path)  # Windows
+    except:
+        subprocess.Popen(["xdg-open", path])  # Linux fallback
+
+
+# -----------------------------
+# Main UI Function
+# -----------------------------
+def render_file_cleaner():
+    st.header("🧹 Smart File Cleaner")
+
+    # -----------------------------
+    # Scan Button
+    # -----------------------------
+    if st.button("🔍 Scan System"):
+        with st.spinner("Scanning files... Please wait..."):
+            files = scan_files(FOLDERS_TO_SCAN)
+            analyzed = analyze_files(files)
+            safe_files, total_size = get_safe_files(analyzed)
+
+            st.session_state["safe_files"] = safe_files
+            st.session_state["total_size"] = total_size
+
+            st.success("Scan Completed!")
+
+    # -----------------------------
+    # Show Results
+    # -----------------------------
+    if "safe_files" in st.session_state:
+        st.subheader("🟢 Safe to Delete Files")
+
+        st.write(f"Total Files: {len(st.session_state['safe_files'])}")
+        st.write(f"Space You Can Free: {format_size(st.session_state['total_size'])}")
+
+        # -----------------------------
+        # AI Advice
+        # -----------------------------
+        if st.session_state["total_size"] > 1 * 1024 * 1024 * 1024:
+            st.warning("⚠️ Large junk detected. Cleaning recommended!")
+        else:
+            st.info("✅ Your system looks clean.")
+
+        st.divider()
+
+        # -----------------------------
+        # File List with Actions
+        # -----------------------------
+        for i, f in enumerate(st.session_state["safe_files"][:20]):
+            col1, col2, col3 = st.columns([6, 1, 1])
+
+            with col1:
+                st.write(f"{f['path']} ({format_size(f['size'])})")
+
+            with col2:
+                if st.button("👁️", key=f"view_{i}"):
+                    open_file(f["path"])
+
+            with col3:
+                if st.button("🗑️", key=f"delete_{i}"):
+                    st.session_state["delete_target"] = f
+
+        # -----------------------------
+        # Individual Delete Confirmation
+        # -----------------------------
+        if "delete_target" in st.session_state:
+            file_to_delete = st.session_state["delete_target"]
+
+            st.warning(f"⚠️ Are you sure you want to delete?\n\n{file_to_delete['path']}")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("✅ Yes Delete", key="confirm_delete"):
+                    try:
+                        os.remove(file_to_delete["path"])
+                        st.success("File deleted successfully!")
+
+                        # Remove from UI list
+                        st.session_state["safe_files"] = [
+                            f for f in st.session_state["safe_files"]
+                            if f["path"] != file_to_delete["path"]
+                        ]
+
+                    except:
+                        st.error("Failed to delete file!")
+
+                    del st.session_state["delete_target"]
+
+            with col2:
+                if st.button("❌ Cancel", key="cancel_delete"):
+                    del st.session_state["delete_target"]
+
+        st.divider()
+
+        # -----------------------------
+        # Bulk Delete (Safe)
+        # -----------------------------
+        if st.button("🗑️ Clean All Safe Files"):
+            st.session_state["confirm_bulk_delete"] = True
+
+        if "confirm_bulk_delete" in st.session_state:
+            st.warning("⚠️ Delete ALL safe files?")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("✅ Yes, Delete All", key="bulk_yes"):
+                    deleted, failed = delete_files(st.session_state["safe_files"])
+
+                    st.success(f"Deleted: {deleted} files")
+                    if failed > 0:
+                        st.error(f"Failed: {failed} files")
+
+                    # Clear UI list
+                    st.session_state["safe_files"] = []
+
+                    del st.session_state["confirm_bulk_delete"]
+
+            with col2:
+                if st.button("❌ Cancel", key="bulk_cancel"):
+                    del st.session_state["confirm_bulk_delete"]
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\ids\view.py ---
+
+import streamlit as st
+import pandas as pd
+import os
+from streamlit_autorefresh import st_autorefresh
+
+# ---------------- PATHS ----------------
+BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../")
+)
+# BASE_DIR = os.path.dirname(
+#     os.path.dirname(
+#         os.path.dirname(os.path.abspath(__file__))
+#     )
+# )
+LOG_FILE = os.path.join(BASE_DIR, "logs", "alerts.log")
+
+
+# ---------------- HELPERS ----------------
+def traffic_type(ip: str) -> str:
+    if not ip:
+        return "UNKNOWN"
+    if ip.startswith(("10.", "172.", "192.168.")):
+        return "SELF"
+    return "EXTERNAL"
+
+
+# ---------------- MAIN VIEW ----------------
+def render_ids_dashboard(refresh_interval=3, reset_logs=False):
+
+    st_autorefresh(
+        interval=refresh_interval * 1000,
+        key="ids_refresh"
+    )
+
+    st.header("🛡️ Cyber-Guard IDPS Dashboard")
+    st.caption("Real-Time Intrusion Detection & Prevention")
+
+    # ---------------- RESET ----------------
+    if reset_logs:
+        open(LOG_FILE, "w").close()
+        st.success("Monitoring reset successfully")
+
+    if not os.path.exists(LOG_FILE):
+        st.info("No IDS logs found")
+        return
+
+    # ---------------- READ LOGS ----------------
+    rows = []
+
+    with open(LOG_FILE, encoding="utf-8") as f:
+        for line in f:
+            try:
+                if "| IDS |" not in line:
+                    continue
+
+                parts = [p.strip() for p in line.split("|")]
+
+                time = parts[0]
+                label = parts[2]
+
+                src_ip = ""
+                action = ""
+
+                for p in parts:
+                    if p.startswith("SRC_IP="):
+                        src_ip = p.replace("SRC_IP=", "")
+                    if p.startswith("ACTION="):
+                        action = p.replace("ACTION=", "")
+
+                rows.append([time, label, src_ip, action])
+
+            except Exception:
+                pass
+
+    df = pd.DataFrame(
+        rows,
+        columns=["time", "label", "src_ip", "action"]
+    )
+
+    if df.empty:
+        st.info("No IDS events yet")
+        return
+
+    # ---------------- ADD TRAFFIC TYPE ----------------
+    df["traffic_type"] = df["src_ip"].apply(traffic_type)
+
+    # ---------------- METRICS ----------------
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric("📦 Packets", len(df))
+
+    c2.metric(
+        "⚠️ Alerts",
+        len(df[df.label != "normal"])
+    )
+
+    c3.metric(
+        "⛔ Blocked IPs",
+        df[df.action == "BLOCKED"].src_ip.nunique()
+    )
+
+    c4.metric(
+        "🌍 Unique IPs",
+        df.src_ip.nunique()
+    )
+
+    # ---------------- INFO BADGE ----------------
+    st.caption(
+        "🟢 SELF = Traffic from your own system / LAN | "
+        "🔴 EXTERNAL = Outside network traffic"
+    )
+
+    # ---------------- LIVE EVENTS ----------------
+    st.subheader("🚨 Live Events")
+
+    def highlight(row):
+        if row["action"] == "BLOCKED":
+            return ["background-color:#ff4b4b"] * len(row)
+        if row["label"] != "normal":
+            return ["background-color:#ffcccc"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(
+        df.tail(50)[
+            ["time", "label", "src_ip", "traffic_type", "action"]
+        ].style.apply(highlight, axis=1),
+        use_container_width=True,
+        height=450
+    )
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\ids\__init__.py ---
+
+
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\system_monitor\view.py ---
+
+import streamlit as st
+import joblib
+import pandas as pd
+import os
+import time
+import plotly.express as px
+
+from core.data_logger import log_system_data
+from features.monitoring.monitor import collect_system_metrics
+from features.ai_assistant.predictor import predict_system_state
+from core.utils.logger import log_alert
+
+from ui.dashboard.components.metrics import render_metrics
+from ui.dashboard.components.tables import get_top_heavy_processes, render_resource_table
+from ui.dashboard.components.alerts import render_alerts
+from ui.dashboard.components.sidebar import load_sidebar_settings
+
+from features.monitoring.data_fetcher import fetch_metrics
+
+# -------------------------------
+# 🔥 SAFE FALLBACK FUNCTIONS
+# -------------------------------
+def calculate_health_score(cpu, ram, disk, pred):
+    score = 100 - (cpu * 0.3 + ram * 0.3 + disk * 0.2)
+    if pred == 2:
+        score -= 20
+    score = max(0, int(score))
+
+    if score < 50:
+        label = "Poor"
+    elif score < 80:
+        label = "Average"
+    else:
+        label = "Good"
+
+    return score, label
+
+
+def get_auto_mitigation_suggestions(cpu, ram, disk, pred, battery):
+    suggestions = []
+
+    if cpu > 80:
+        suggestions.append("Close high CPU usage apps")
+    if ram > 80:
+        suggestions.append("Restart system or close apps")
+    if disk > 90:
+        suggestions.append("Free up disk space")
+    if battery < 20:
+        suggestions.append("Plug in charger")
+
+    if not suggestions:
+        suggestions.append("System is stable")
+
+    return suggestions
+
+
+# -------------------------------
+# PATHS
+# -------------------------------
+# BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../")
+)
+MODEL_PATH = os.path.join(BASE_DIR, "models", "model.pkl")
+SETTINGS_PATH = os.path.join(BASE_DIR, "core", "config", "settings.json")
+
+LABEL_MAP = {
+    0: "🟢 Normal",
+    1: "🟡 High Load",
+    2: "🔴 Hang Risk"
+}
+
+
+# -------------------------------
+# MAIN FUNCTION
+# -------------------------------
+def render_system_monitor(refresh_interval=5):
+
+    st.header("💻 System Performance Monitor")
+
+    # 🔥 SAFE SETTINGS LOAD
+    try:
+        settings = load_sidebar_settings(SETTINGS_PATH)
+    except:
+        settings = {
+            "hang_alert_enabled": True,
+            "alert_interval": 5
+        }
+
+    # -------------------------------
+    # LOAD ML MODEL
+    # -------------------------------
+    model = None
+    try:
+        model = joblib.load(MODEL_PATH)
+    # except Exception as e:
+    #     st.error(f"ML ERROR: {e}")
+    except:
+        st.warning("⚠️ ML model not available, using rule-based prediction")
+
+    # -------------------------------
+    # SESSION STATE INIT
+    # -------------------------------
+    if "last_refresh" not in st.session_state:
+        st.session_state.last_refresh = 0
+
+    if "cached_metrics" not in st.session_state:
+        st.session_state.cached_metrics = None
+
+    # -------------------------------
+    # DATA UPDATE
+    # -------------------------------
+    if time.time() - st.session_state.last_refresh > refresh_interval:
+
+        metrics = collect_system_metrics()
+        st.session_state.cached_metrics = metrics
+
+        log_system_data()
+
+        st.session_state.last_refresh = time.time()
+
+    # -------------------------------
+    # UI RENDER
+    # -------------------------------
+    metrics = st.session_state.cached_metrics
+
+    if metrics is None:
+        st.warning("⏳ Collecting system data...")
+        return
+
+    cpu = metrics["cpu"]
+    ram = metrics["ram"]
+    disk = metrics["disk"]
+    battery = metrics["battery"]
+    process_count = metrics["process_count"]
+
+    # -------------------------------
+    # HEAVY PROCESSES
+    # -------------------------------
+    heavy_df = get_top_heavy_processes()
+    heavy_process_count = len(heavy_df)
+
+    # -------------------------------
+    # FEATURE VECTOR
+    # -------------------------------
+    features = pd.DataFrame([{
+        "cpu_usage": cpu,
+        "ram_usage": ram,
+        "disk_usage": disk,
+        "disk_read": metrics["disk_read"],
+        "disk_write": metrics["disk_write"],
+        "battery_percent": battery,
+        "process_count": process_count,
+        "heavy_process_count": heavy_process_count
+    }])
+
+    # -------------------------------
+    # PREDICTION
+    # -------------------------------
+    pred, ml_available = predict_system_state(model, features)
+    state = LABEL_MAP.get(pred, "Unknown")
+
+    # -------------------------------
+    # HEALTH SCORE
+    # -------------------------------
+    health_score, health_label = calculate_health_score(cpu, ram, disk, pred)
+
+    # -------------------------------
+    # UI METRICS
+    # -------------------------------
+    render_metrics(cpu, ram, disk, battery)
+
+    st.markdown(f"### Current State: **{state}**")
+
+    st.markdown(
+        f"""
+        ### 🧠 System Health Score  
+        **{health_score}/100 — {health_label}**
+        """
+    )
+
+    # -------------------------------
+    # ALERTS
+    # -------------------------------
+    render_alerts(
+        pred=pred,
+        hang_alert_enabled=settings.get("hang_alert_enabled", True),
+        alert_interval=settings.get("alert_interval", 5),
+        show_xai=False
+    )
+
+    # -------------------------------
+    # LOG ALERT
+    # -------------------------------
+    if pred == 2 and settings.get("hang_alert_enabled", True):
+        log_alert(
+            alert_type="HANG_RISK",
+            cpu=cpu,
+            ram=ram,
+            disk=disk,
+            battery=battery,
+            extra_info="ML" if ml_available else "RULE"
+        )
+
+    # -------------------------------
+    # RECOMMENDATIONS
+    # -------------------------------
+    st.subheader("🛠️ Recommended Actions")
+
+    suggestions = get_auto_mitigation_suggestions(cpu, ram, disk, pred, battery)
+    for s in suggestions:
+        st.write(f"• {s}")
+
+    # -------------------------------
+    # RESOURCE TABLE
+    # -------------------------------
+    render_resource_table(heavy_df)
+
+    # -------------------------------
+    # ANALYTICS
+    # -------------------------------
+    st.subheader("📊 Analytics Dashboard")
+
+    df = fetch_metrics()
+
+    if df is not None and not df.empty:
+
+        df = df.sort_values("timestamp")
+
+        fig = px.line(
+            df,
+            x="timestamp",
+            y=["cpu", "ram", "disk"],
+            title="System Usage Over Time"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        st.info("📊 No historical data yet. Please wait 10–20 seconds...")
+
+--- D:\Minor Project\SmartGuard\ui\dashboard\system_monitor\__init__.py ---
+
