@@ -4,42 +4,114 @@ from PIL import Image
 import subprocess
 import os
 import sys
+import webbrowser
+import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ============================
+# PATH FIX (IMPORTANT)
+# ============================
+if hasattr(sys, "_MEIPASS"):
+    BASE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PYTHONW = os.path.join(ROOT, "venv", "Scripts", "pythonw.exe")
-PYTHON = os.path.join(ROOT, "venv", "Scripts", "python.exe")
+# ============================
+# FILE PATHS
+# ============================
+APP = os.path.join(BASE_DIR, "app.py")
+BG_EXE = os.path.join(BASE_DIR, "background_monitor.exe")
 
-BG_MONITOR = os.path.join(ROOT, "services", "background_monitor.py")
-ALERT = os.path.join(ROOT, "services", "alert_notifier.py")
-APP = os.path.join(ROOT, "app.py")
-ICON = os.path.join(ROOT, "assets", "icon.png")
+ICON = os.path.join(BASE_DIR, "assets", "icon.png")
 
+# ============================
+# GLOBAL PROCESS LIST
+# ============================
 processes = []
 
+# ============================
+# START BACKGROUND SERVICE
+# ============================
 def start_background():
-    processes.append(subprocess.Popen([PYTHONW, BG_MONITOR]))
-    processes.append(subprocess.Popen([PYTHONW, ALERT]))
+    try:
+        if os.path.exists(BG_EXE):
+            p = subprocess.Popen([BG_EXE])
+            processes.append(p)
+        else:
+            print("Background EXE not found")
+    except Exception as e:
+        print("Error starting background:", e)
 
-def open_dashboard():
-    subprocess.Popen([PYTHON, "-m", "streamlit", "run", APP])
+# ============================
+# OPEN DASHBOARD (STREAMLIT)
+# ============================
 
+
+def open_dashboard(icon, item):
+    try:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        app_path = os.path.join(project_root, "app.py")
+
+        python_path = os.path.join(project_root, "venv", "Scripts", "python.exe")
+
+        # 🔥 Start Streamlit
+        subprocess.Popen(
+            [python_path, "-m", "streamlit", "run", app_path],
+            cwd=project_root
+        )
+
+        # wait for server
+        time.sleep(5)
+
+        # 🔥 FORCE open browser (Windows)
+        subprocess.Popen(
+            ["cmd", "/c", "start", "http://localhost:8501"],
+            shell=True
+        )
+
+    except Exception as e:
+        print("Error:", e)
+# ============================
+# EXIT APP
+# ============================
 def exit_app(icon, item):
     for p in processes:
-        p.kill()
-    icon.stop()
-    sys.exit()
+        try:
+            p.kill()
+        except:
+            pass
 
+    icon.stop()
+    os._exit(0)
+
+# ============================
+# SETUP TRAY
+# ============================
 def setup_tray():
-    image = Image.open(ICON)
+    try:
+        image = Image.open(ICON)
+    except:
+        # fallback icon
+        image = Image.new("RGB", (64, 64), color="blue")
+
     menu = (
         item("📊 Open Dashboard", open_dashboard),
         item("❌ Exit", exit_app),
     )
 
-    icon = pystray.Icon("SmartCyberGuard", image, "Smart Cyber Guard", menu)
+    icon = pystray.Icon(
+        "SmartCyberGuard",
+        image,
+        "Smart Cyber Guard",
+        menu
+    )
+
+    # start background first
     start_background()
+
     icon.run()
 
+# ============================
+# MAIN
+# ============================
 if __name__ == "__main__":
     setup_tray()

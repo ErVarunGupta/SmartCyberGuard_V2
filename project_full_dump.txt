@@ -2,10 +2,18 @@
 ==================================================
 
 SmartGuard/
+    .gitignore
     app.py
+    background_monitor.spec
+    desktop_app.py
     export_project.py
     project_full_dump.txt
     requirements.txt
+    run_dashboard.bat
+    test.py
+    tray_app.spec
+    api/
+        server.py
     app/
         bootstrap.py
         main.py
@@ -32,6 +40,7 @@ SmartGuard/
             logger.py
             __init__.py
     data/
+        ids_dataset.csv
         kddcup.data_10_percent.gz
         kddcup.names
         system_data.csv
@@ -76,21 +85,43 @@ SmartGuard/
     logs/
         alerts.log
     models/
+        ids_iso_model.pkl
+        ids_rf_model.pkl
+        ids_scaler.pkl
         model.pkl
         rf_model.pkl
-        rf_model.skops
         scaler.pkl
-        scaler.skops
+        train_system_model.py
+    model_training/
+        generate_ids_data.py
+        train_ids_model.py
+        train_system_model.py
     schema/
         feature_schema.py
         __init__.py
     services/
+        ai_service.py
         background_monitor.py
+        cleaner_service.py
+        ids_service.py
+        system_service.py
         __init__.py
+        ml/
+            model_loader.py
+            system_features.py
+            system_model_loader.py
     tests/
     ui/
         tray_app.py
         __init__.py
+        components/
+            alert.py
+            block_alert.py
+            card.py
+            ids_table.py
+            process_table.py
+            status_badge.py
+            traffic_graph.py
         dashboard/
             analytics.py
             analyzer_app.py
@@ -112,6 +143,11 @@ SmartGuard/
             system_monitor/
                 view.py
                 __init__.py
+        pages/
+            ai_page.py
+            cleaner_page.py
+            ids_page.py
+            system_page.py
 
 
 📄 FILE CONTENTS
@@ -271,6 +307,173 @@ elif active_tab == "🧹 Smart File Cleaner":
     except Exception as e:
         st.error(f"File Cleaner Error: {e}")
 
+--- D:\Minor Project\SmartGuard\background_monitor.spec ---
+
+# -*- mode: python ; coding: utf-8 -*-
+
+
+a = Analysis(
+    ['services\\background_monitor.py'],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='background_monitor',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+
+--- D:\Minor Project\SmartGuard\desktop_app.py ---
+
+import sys
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QHBoxLayout, QVBoxLayout,
+    QPushButton, QLabel, QStackedWidget
+)
+import qtawesome as qta
+
+# ✅ IMPORT FROM SEPARATE FILES (CORRECT WAY)
+from ui.pages.system_page import SystemPage
+from ui.pages.ids_page import IDSPage
+from ui.pages.ai_page import AIPage
+from ui.pages.cleaner_page import CleanerPage
+
+
+# ==============================
+# MAIN WINDOW
+# ==============================
+class SmartGuardApp(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("🛡 SmartGuard Desktop")
+        self.setGeometry(100, 100, 1000, 600)
+
+        main_layout = QHBoxLayout()
+
+        # ======================
+        # SIDEBAR
+        # ======================
+        sidebar = QVBoxLayout()
+
+        title = QLabel("⚙ Controls")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        sidebar.addWidget(title)
+
+        # Buttons
+        self.btn_system = QPushButton(" System Monitor")
+        self.btn_system.setIcon(qta.icon("fa5s.desktop"))
+
+        self.btn_ids = QPushButton(" Intrusion Detection")
+        self.btn_ids.setIcon(qta.icon("fa5s.shield-alt"))
+
+        self.btn_cleaner = QPushButton(" File Cleaner")
+        self.btn_cleaner.setIcon(qta.icon("fa5s.broom"))
+
+        self.btn_ai = QPushButton(" AI Assistant")
+        self.btn_ai.setIcon(qta.icon("fa5s.robot"))
+
+        sidebar.addWidget(self.btn_system)
+        sidebar.addWidget(self.btn_ids)
+        sidebar.addWidget(self.btn_cleaner)
+        sidebar.addWidget(self.btn_ai)
+
+        sidebar.addStretch()
+
+        sidebar_widget = QWidget()
+        sidebar_widget.setLayout(sidebar)
+        sidebar_widget.setFixedWidth(220)
+
+        # ======================
+        # STACKED PAGES (MAIN CONTENT)
+        # ======================
+        self.pages = QStackedWidget()
+
+        # ✅ USE IMPORTED PAGES ONLY
+        self.pages.addWidget(SystemPage())
+        self.pages.addWidget(IDSPage())
+        self.pages.addWidget(CleanerPage())
+        self.pages.addWidget(AIPage())
+
+        # ======================
+        # BUTTON ACTIONS
+        # ======================
+        self.btn_system.clicked.connect(lambda: self.pages.setCurrentIndex(0))
+        self.btn_ids.clicked.connect(lambda: self.pages.setCurrentIndex(1))
+        self.btn_cleaner.clicked.connect(lambda: self.pages.setCurrentIndex(2))
+        self.btn_ai.clicked.connect(lambda: self.pages.setCurrentIndex(3))
+
+        # ======================
+        # MAIN LAYOUT
+        # ======================
+        main_layout.addWidget(sidebar_widget)
+        main_layout.addWidget(self.pages)
+
+        self.setLayout(main_layout)
+
+        # ======================
+        # DARK THEME (PROFESSIONAL)
+        # ======================
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #0f172a;
+                color: white;
+                font-size: 14px;
+            }
+
+            QPushButton {
+                background-color: #1e293b;
+                border: none;
+                padding: 12px;
+                text-align: left;
+                border-radius: 8px;
+            }
+
+            QPushButton:hover {
+                background-color: #334155;
+            }
+
+            QLabel {
+                padding: 5px;
+            }
+        """)
+
+
+# ==============================
+# RUN APP
+# ==============================
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = SmartGuardApp()
+    window.show()
+    sys.exit(app.exec())
+
 --- D:\Minor Project\SmartGuard\export_project.py ---
 
 import os
@@ -365,6 +568,209 @@ scapy
 sounddevice
 plyer
 
+pyinstaller
+pystray
+
+--- D:\Minor Project\SmartGuard\test.py ---
+
+import joblib
+
+scaler = joblib.load("models/scaler.pkl")
+print(scaler.n_features_in_)
+
+--- D:\Minor Project\SmartGuard\tray_app.spec ---
+
+# -*- mode: python ; coding: utf-8 -*-
+
+
+a = Analysis(
+    ['ui\\tray_app.py'],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=['pystray', 'PIL'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='tray_app',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+
+--- D:\Minor Project\SmartGuard\api\server.py ---
+
+import threading
+import random
+import time
+
+from services.ids_service import process_packet
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+# from services.system_service import get_system_data
+from services.ai_service import generate_response
+from services.cleaner_service import scan_files, delete_files
+from services.system_service import get_system_metrics
+
+app = FastAPI()
+
+
+
+# def simulate_network():
+#     normal_ips = ["192.168.1.1", "10.0.0.5"]
+#     attacker_ips = ["45.33.32.1", "103.21.244.1"]
+
+#     while True:
+#         # Normal traffic (slow)
+#         process_packet(random.choice(normal_ips), "normal")
+
+#         # Attack traffic (fast burst)
+#         if random.random() < 0.4:
+#             attacker_ip = random.choice(attacker_ips)
+
+#             # simulate burst
+#             for _ in range(random.randint(3, 6)):
+#                 process_packet(attacker_ip, "attack")
+
+#         time.sleep(1)
+
+
+from scapy.all import IP, TCP
+
+def simulate_network():
+    while True:
+        packet = IP(src="192.168.1.100") / TCP(dport=80)
+        process_packet(packet)
+        time.sleep(1)
+
+# @app.on_event("startup")
+# def start_services():
+#     run_sniffer()
+
+
+@app.get("/")
+def home():
+    return {"status": "API Running"}
+
+
+# =========================
+# SYSTEM
+# =========================
+
+
+
+
+@app.get("/metrics")
+def metrics():
+    return get_system_metrics()
+
+
+# =========================
+# IDS
+# =========================
+
+from services.ids_service import get_ids_data, get_blocked_ips, block_ip
+
+from services.ids_service import start_ids
+
+@app.on_event("startup")
+def start_ids_service():
+    import threading
+    threading.Thread(target=start_ids, daemon=True).start()
+
+
+# =========================
+# IDS MAIN API
+# =========================
+@app.get("/ids")
+def ids_data():
+    return get_ids_data()
+
+
+# =========================
+# BLOCKED IPS LIST
+# =========================
+@app.get("/ids/blocked")
+def blocked_ips():
+    return {
+        "blocked_ips": get_blocked_ips()
+    }
+
+
+# =========================
+# MANUAL BLOCK
+# =========================
+@app.post("/ids/block")
+def block_ip_api(data: dict):
+    return block_ip(data.get("ip"))
+
+
+# =========================
+# AI
+# =========================
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/ai")
+def ai_chat(req: ChatRequest):
+    return {"response": generate_response(req.message)}
+
+
+# =========================
+# CLEANER
+# =========================
+@app.get("/cleaner/scan")
+def cleaner_scan():
+    files, total_size = scan_files()
+
+    return {
+        "files": files,
+        "total_files": len(files),
+        "total_size": round(total_size / (1024 * 1024), 2)  # MB
+    }
+
+
+class CleanRequest(BaseModel):
+    paths: list
+
+
+@app.post("/cleaner/clean")
+def cleaner_clean(req: CleanRequest):
+    deleted = delete_files(req.paths)
+
+    return {
+        "message": f"{deleted} files deleted successfully"
+    }
+
+
+# threading.Thread(target=simulate_network, daemon=True).start()
+
+
+
 --- D:\Minor Project\SmartGuard\app\bootstrap.py ---
 
 from services.monitor_service import start_monitoring
@@ -414,7 +820,7 @@ def log_system_data():
 
 --- D:\Minor Project\SmartGuard\core\config\api_keys.py ---
 
-GEMINI_API_KEY = "AIzaSyB3VG0XXFhopkcDmDjaqcxx0ry-CFk7s94"
+GEMINI_API_KEY = "AIzaSyCVvjCKwSj_0LHMWiCa-qoO622oO_jPXuI"
 
 --- D:\Minor Project\SmartGuard\core\config\constants.py ---
 
@@ -1340,6 +1746,223 @@ def listen_for_wake_word():
 
 
 
+--- D:\Minor Project\SmartGuard\models\train_system_model.py ---
+
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+import joblib
+
+data = pd.DataFrame({
+    "cpu": [20, 50, 90],
+    "ram": [30, 60, 95],
+    "disk": [40, 70, 90],
+    "battery": [80, 50, 20],
+    "process": [100, 200, 400],
+    "cpu_trend": [20, 55, 95],
+    "ram_trend": [30, 65, 90],
+    "load": [30, 60, 95],
+    "label": [0, 1, 2]  # normal, moderate, high
+})
+
+X = data.drop("label", axis=1)
+y = data["label"]
+
+model = RandomForestClassifier()
+model.fit(X, y)
+
+joblib.dump(model, "models/system_model.pkl")
+
+--- D:\Minor Project\SmartGuard\model_training\generate_ids_data.py ---
+
+import random
+import pandas as pd
+
+data = []
+
+# NORMAL TRAFFIC
+for _ in range(5000):
+    packet_count = random.randint(5, 20)
+    byte_count = random.randint(500, 5000)
+
+    avg_packet_size = byte_count / packet_count
+    packet_rate = random.uniform(1, 5)
+
+    tcp_ratio = random.uniform(0.4, 0.9)
+    udp_ratio = 1 - tcp_ratio
+
+    unique_ports = random.randint(1, 5)
+
+    label = 0
+
+    data.append([
+        packet_count,
+        byte_count,
+        avg_packet_size,
+        packet_rate,
+        tcp_ratio,
+        udp_ratio,
+        unique_ports,
+        label
+    ])
+
+# ATTACK TRAFFIC
+for _ in range(3000):
+    packet_count = random.randint(50, 200)
+    byte_count = random.randint(10000, 50000)
+
+    avg_packet_size = byte_count / packet_count
+    packet_rate = random.uniform(10, 50)
+
+    tcp_ratio = random.uniform(0.8, 1.0)
+    udp_ratio = 1 - tcp_ratio
+
+    unique_ports = random.randint(10, 50)
+
+    label = 1
+
+    data.append([
+        packet_count,
+        byte_count,
+        avg_packet_size,
+        packet_rate,
+        tcp_ratio,
+        udp_ratio,
+        unique_ports,
+        label
+    ])
+
+
+# EXTREME ATTACK (DDOS STYLE)
+for _ in range(2000):
+    packet_count = random.randint(200, 500)
+    byte_count = random.randint(50000, 200000)
+
+    avg_packet_size = byte_count / packet_count
+    packet_rate = random.uniform(50, 150)
+
+    tcp_ratio = random.uniform(0.9, 1.0)
+    udp_ratio = 1 - tcp_ratio
+
+    unique_ports = random.randint(50, 200)
+
+    label = 1
+
+    data.append([
+        packet_count,
+        byte_count,
+        avg_packet_size,
+        packet_rate,
+        tcp_ratio,
+        udp_ratio,
+        unique_ports,
+        label
+    ])
+
+df = pd.DataFrame(data, columns=[
+    "packet_count",
+    "byte_count",
+    "avg_packet_size",
+    "packet_rate",
+    "tcp_ratio",
+    "udp_ratio",
+    "unique_ports",
+    "label"
+])
+
+df.to_csv("data/ids_dataset.csv", index=False)
+
+print("✅ Dataset created")
+
+--- D:\Minor Project\SmartGuard\model_training\train_ids_model.py ---
+
+import pandas as pd
+import joblib
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+
+# LOAD DATA
+df = pd.read_csv("data/ids_dataset.csv")
+
+X = df.drop("label", axis=1)
+y = df["label"]
+
+# SCALE (IMPORTANT)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# RANDOM FOREST
+rf = RandomForestClassifier(n_estimators=100)
+rf.fit(X_scaled, y)
+
+joblib.dump(rf, "models/ids_rf_model.pkl")
+
+# ISOLATION FOREST
+iso = IsolationForest(contamination=0.1)
+iso.fit(X_scaled)
+
+joblib.dump(iso, "models/ids_iso_model.pkl")
+
+# SAVE SCALER
+joblib.dump(scaler, "models/ids_scaler.pkl")
+
+print("✅ NEW IDS MODELS TRAINED")
+
+--- D:\Minor Project\SmartGuard\model_training\train_system_model.py ---
+
+import pandas as pd
+import os
+import joblib
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import MinMaxScaler
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_FILE = os.path.join(BASE_DIR, "data", "system_data_labeled.csv")
+
+df = pd.read_csv(DATA_FILE)
+
+FEATURES = [
+    "cpu_usage",
+    "ram_usage",
+    "disk_usage",
+    "disk_read",
+    "disk_write",
+    "battery_percent",
+    "process_count",
+    "heavy_process_count"
+]
+
+X = df[FEATURES]
+y = df["label"]
+
+# ✅ SCALER
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+
+# SPLIT
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# MODEL
+model = RandomForestClassifier(
+    n_estimators=200,
+    random_state=42,
+    n_jobs=-1
+)
+
+model.fit(X_train, y_train)
+
+# SAVE BOTH
+joblib.dump(model, os.path.join(BASE_DIR, "models", "rf_model.pkl"))
+joblib.dump(scaler, os.path.join(BASE_DIR, "models", "scaler.pkl"))
+
+print("✅ Model + Scaler saved correctly")
+
 --- D:\Minor Project\SmartGuard\schema\feature_schema.py ---
 
 FEATURE_ORDER = [
@@ -1367,66 +1990,114 @@ def encode_flag(f):
 
 
 
+--- D:\Minor Project\SmartGuard\services\ai_service.py ---
+
+from services.system_service import get_system_metrics
+
+
+# =========================
+# AI RESPONSE
+# =========================
+def generate_response(user_msg: str):
+    data = get_system_metrics()
+
+    cpu = data.get("cpu", 0)
+    ram = data.get("ram", 0)
+    disk = data.get("disk", 0)
+    state = data.get("state", "Unknown")
+    health = data.get("health_score", 0)
+
+    msg = user_msg.lower()
+
+    # =========================
+    # SYSTEM QUESTIONS
+    # =========================
+    if "cpu" in msg:
+        return f"Your CPU usage is {cpu}%."
+
+    elif "ram" in msg:
+        return f"Your RAM usage is {ram}%."
+
+    elif "disk" in msg:
+        return f"Disk usage is {disk}%."
+
+    elif "battery" in msg:
+        return f"Battery is at {data.get('battery', 0)}%."
+
+    elif "state" in msg or "status" in msg:
+        return f"System is currently in {state} state."
+
+    elif "health" in msg:
+        return f"System health score is {health}."
+
+    # =========================
+    # PERFORMANCE ANALYSIS
+    # =========================
+    elif "slow" in msg or "lag" in msg:
+        if state == "High Load":
+            return "Your system is under high load. Close heavy apps immediately."
+        elif state == "Moderate":
+            return "System is moderately loaded. Monitor usage."
+        else:
+            return "System looks stable."
+
+    # =========================
+    # RECOMMENDATIONS
+    # =========================
+    elif "recommend" in msg or "suggest" in msg:
+        rec = data.get("recommendation", [])
+        return "Recommendations:\n" + "\n".join(rec)
+
+    # =========================
+    # DEFAULT
+    # =========================
+    return f"System is {state}. CPU: {cpu}%, RAM: {ram}%."
+
 --- D:\Minor Project\SmartGuard\services\background_monitor.py ---
 
-# --------------------------------
-# SmartCyberGuard Background Agent (AI Powered)
-# --------------------------------
-
-# ===== SINGLE INSTANCE (WINDOWS MUTEX) =====
 import sys
-import ctypes
-
-kernel32 = ctypes.windll.kernel32
-
-mutex = kernel32.CreateMutexW(
-    None,
-    True,
-    "SmartCyberGuard_BackgroundMonitor"
-)
-
-ERROR_ALREADY_EXISTS = 183
-
-if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
-    sys.exit(0)
-
-# ===== STANDARD IMPORTS =====
 import os
 import time
 import threading
 import pandas as pd
 import joblib
 
-# ===== PATH HANDLING =====
+# ==============================
+# PATH FIX (VERY IMPORTANT)
+# ==============================
 if hasattr(sys, "_MEIPASS"):
     BASE_DIR = sys._MEIPASS
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, BASE_DIR)
 
-# ===== PROJECT IMPORTS =====
+# ==============================
+# SAFE IMPORTS
+# ==============================
 from features.monitoring.monitor import collect_system_metrics
 from features.ai_assistant.predictor import predict_system_state
 from features.anomaly_detection.network_sniffer import start_sniffing
 from features.ai_assistant.ai_brain import analyze
-# from core.action_engine import execute
-# from core.voice.output import speak
 from core.logger.logger import log_alert
+from core.data_logger import log_system_data
 
-# from utils.data_logger import log_system_data
-
-# ===== RESOURCE PATH =====
-def resource_path(relative_path: str) -> str:
+# ==============================
+# RESOURCE PATH
+# ==============================
+def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(BASE_DIR, relative_path)
 
-# ===== LOAD ML MODEL =====
+# ==============================
+# LOAD ML MODEL
+# ==============================
 model = None
 try:
-    model = joblib.load(resource_path("models/model.pkl"))
+    model_path = resource_path("models/model.pkl")
+    model = joblib.load(model_path)
+
     log_alert(
         alert_type="MODEL_LOADED",
         source="AGENT",
@@ -1439,11 +2110,20 @@ except Exception as e:
         extra_info=str(e)
     )
 
-# ===== START IDS THREAD =====
-ids_thread = threading.Thread(
-    target=start_sniffing,
-    daemon=True
-)
+# ==============================
+# START IDS THREAD
+# ==============================
+def start_ids():
+    try:
+        start_sniffing()
+    except Exception as e:
+        log_alert(
+            alert_type="IDS_ERROR",
+            source="AGENT",
+            extra_info=str(e)
+        )
+
+ids_thread = threading.Thread(target=start_ids, daemon=True)
 ids_thread.start()
 
 log_alert(
@@ -1452,64 +2132,38 @@ log_alert(
     extra_info="IDS running"
 )
 
-# ===== SPEAK CONTROL (ANTI-SPAM) =====
-LAST_SPOKEN = ""
-LAST_SPOKEN_TIME = 0
-SPEAK_COOLDOWN = 15  # seconds
-
-def safe_speak(message):
-    global LAST_SPOKEN, LAST_SPOKEN_TIME
-
-    now = time.time()
-
-    # prevent repeating same message
-    if message == LAST_SPOKEN and (now - LAST_SPOKEN_TIME < SPEAK_COOLDOWN):
-        return
-
-    LAST_SPOKEN = message
-    LAST_SPOKEN_TIME = now
-
-    speak(message)
-
-# ===== MAIN LOOP =====
-print("🚀 SmartCyberGuard AI Agent Started")
+# ==============================
+# MAIN LOOP
+# ==============================
+print("🚀 SmartCyberGuard Background Service Started")
 
 while True:
     try:
         # 1️⃣ Collect metrics
         metrics = collect_system_metrics()
 
-        log_system_data(metrics)
+        # 2️⃣ Log data safely
+        try:
+            log_system_data()
+        except:
+            pass
 
-        # 2️⃣ Prepare ML features
+        # 3️⃣ Prepare ML features
         features_df = pd.DataFrame([{
             "cpu_usage": metrics["cpu"],
             "ram_usage": metrics["ram"],
             "disk_usage": metrics["disk"],
-            "disk_read": metrics["disk_read"],
-            "disk_write": metrics["disk_write"],
+            "disk_read": metrics.get("disk_read", 0),
+            "disk_write": metrics.get("disk_write", 0),
             "battery_percent": metrics["battery"],
-            "process_count": metrics["process_count"],
+            "process_count": metrics.get("process_count", 0),
             "heavy_process_count": 0
         }])
 
-        # 3️⃣ Predict system state
+        # 4️⃣ Predict system state
         pred, ml_available = predict_system_state(model, features_df)
 
-        # 4️⃣ Intrusion flag (basic for now)
-        intrusion_detected = False   # future: connect with IDS output
-
-        # 5️⃣ AI BRAIN DECISION
-        message, actions = analyze(metrics, pred, intrusion_detected)
-
-        # 6️⃣ Speak intelligently
-        safe_speak(message)
-
-        # 7️⃣ Execute actions
-        for action in actions:
-            execute(action)
-
-        # 8️⃣ Logging important events
+        # 5️⃣ Basic alert logging
         if pred == 2:
             log_alert(
                 alert_type="HANG_RISK",
@@ -1528,7 +2182,7 @@ while True:
                 battery=metrics["battery"]
             )
 
-        # 9️⃣ Wait
+        # 6️⃣ Sleep
         time.sleep(5)
 
     except Exception as e:
@@ -1539,9 +2193,746 @@ while True:
         )
         time.sleep(5)
 
+--- D:\Minor Project\SmartGuard\services\cleaner_service.py ---
+
+import os
+import tempfile
+
+# =========================
+# TARGET DIRECTORIES
+# =========================
+TARGET_DIRS = [
+    tempfile.gettempdir(),              # temp
+    os.path.expanduser("~\\Downloads")  # downloads
+]
+
+
+# =========================
+# SCAN FILES
+# =========================
+def scan_files():
+    junk_files = []
+    total_size = 0
+
+    for folder in TARGET_DIRS:
+        if not os.path.exists(folder):
+            continue
+
+        for root, dirs, files in os.walk(folder):
+            for file in files:
+                try:
+                    path = os.path.join(root, file)
+
+                    # filter extensions
+                    if file.endswith((".tmp", ".log", ".cache")):
+                        size = os.path.getsize(path)
+
+                        junk_files.append({
+                            "path": path,
+                            "size": size
+                        })
+
+                        total_size += size
+
+                except:
+                    continue
+
+    return junk_files, total_size
+
+
+# =========================
+# DELETE FILES
+# =========================
+def delete_files(file_paths):
+    deleted = 0
+
+    for path in file_paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                deleted += 1
+        except:
+            continue
+
+    return deleted
+
+--- D:\Minor Project\SmartGuard\services\ids_service.py ---
+
+import time
+import joblib
+import os
+import threading
+from queue import Queue
+from collections import defaultdict, deque
+
+from scapy.all import sniff, IP, TCP, UDP
+import pandas as pd
+
+# =========================
+# PATHS
+# =========================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+ISO_MODEL_PATH = os.path.join(BASE_DIR, "models", "ids_iso_model.pkl")
+RF_MODEL_PATH = os.path.join(BASE_DIR, "models", "ids_rf_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "ids_scaler.pkl")
+
+iso_model = joblib.load(ISO_MODEL_PATH)
+rf_model = joblib.load(RF_MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+
+# =========================
+# GLOBAL STATE
+# =========================
+blocked_ips_set = set()
+logs = []
+packets_count = 0
+alerts_count = 0
+unique_ips = set()
+
+# =========================
+# QUEUE SYSTEM (CRITICAL)
+# =========================
+packet_queue = Queue(maxsize=10000)
+
+# =========================
+# FLOW BUFFER
+# =========================
+flow_buffer = defaultdict(lambda: {
+    "timestamps": deque(maxlen=50),
+    "sizes": [],
+    "ports": set(),
+    "tcp": 0,
+    "udp": 0
+})
+
+WINDOW_SECONDS = 5
+
+# =========================
+# DETECTION CONTROL
+# =========================
+last_detection_time = {}
+DETECTION_INTERVAL = 3  # seconds
+
+
+# =========================
+# FEATURE EXTRACTION
+# =========================
+def extract_features(ip_data):
+    timestamps = list(ip_data["timestamps"])
+
+    if len(timestamps) < 2:
+        return None
+
+    duration = timestamps[-1] - timestamps[0]
+    packet_count = len(timestamps)
+    byte_count = sum(ip_data["sizes"])
+
+    avg_packet_size = byte_count / packet_count if packet_count else 0
+    packet_rate = packet_count / duration if duration > 0 else 0
+
+    tcp_ratio = ip_data["tcp"] / packet_count if packet_count else 0
+    udp_ratio = ip_data["udp"] / packet_count if packet_count else 0
+
+    unique_ports = len(ip_data["ports"])
+
+    return [
+        packet_count,
+        byte_count,
+        avg_packet_size,
+        packet_rate,
+        tcp_ratio,
+        udp_ratio,
+        unique_ports
+    ]
+
+
+# =========================
+# ML DECISION ENGINE
+# =========================
+def detect_attack(features):
+    if features is None:
+        return "normal", 0
+
+    # features_scaled = scaler.transform([features])
+
+
+    cols = [
+        "packet_count", "byte_count", "avg_packet_size",
+        "packet_rate", "tcp_ratio", "udp_ratio", "unique_ports"
+    ]
+
+    df = pd.DataFrame([features], columns=cols)
+    features_scaled = scaler.transform(df)
+
+    iso_pred = iso_model.predict(features_scaled)[0]
+    rf_pred = rf_model.predict(features_scaled)[0]
+    rf_probs = rf_model.predict_proba(features_scaled)[0]
+
+    attack_prob = rf_probs[1]  # probability of attack
+
+    # =========================
+    # 🎯 STRICT REAL ATTACK LOGIC
+    # =========================
+
+    # 🔴 HIGH CONFIDENCE ATTACK
+    if rf_pred == 1 and attack_prob > 0.85:
+        return "attack", attack_prob
+
+    # 🟡 SUSPICIOUS (DON'T BLOCK)
+    elif iso_pred == -1 or attack_prob > 0.6:
+        return "suspicious", attack_prob
+
+    # 🟢 NORMAL
+    return "normal", attack_prob
+
+
+# =========================
+# BLOCK SYSTEM
+# =========================
+def block_ip(ip):
+    if ip in blocked_ips_set:
+        return
+
+    blocked_ips_set.add(ip)
+
+    try:
+        os.system(
+            f'netsh advfirewall firewall add rule name="Block_{ip}" dir=in action=block remoteip={ip}'
+        )
+    except:
+        pass
+
+
+# =========================
+# HANDLE PACKET (WORKER)
+# =========================
+def handle_packet(packet):
+    global packets_count, alerts_count
+
+    if IP not in packet:
+        return
+
+    src_ip = packet[IP].src
+    packets_count += 1
+    unique_ips.add(src_ip)
+
+    now = time.time()
+
+    # =========================
+    # DETECTION RATE LIMIT
+    # =========================
+    last = last_detection_time.get(src_ip, 0)
+    if now - last < DETECTION_INTERVAL:
+        return
+
+    last_detection_time[src_ip] = now
+
+    # =========================
+    # FLOW UPDATE
+    # =========================
+    data = flow_buffer[src_ip]
+
+    data["timestamps"].append(now)
+    data["sizes"].append(len(packet))
+
+    if TCP in packet:
+        data["tcp"] += 1
+        data["ports"].add(packet[TCP].dport)
+
+    elif UDP in packet:
+        data["udp"] += 1
+        data["ports"].add(packet[UDP].dport)
+
+    if len(data["timestamps"]) < 5:
+        return
+
+    if now - data["timestamps"][0] > WINDOW_SECONDS:
+
+        features = extract_features(data)
+        label, confidence = detect_attack(features)
+
+        action = "allowed"
+
+        if label == "attack" and confidence > 0.9:
+            alerts_count += 1
+            action = "blocked"
+            block_ip(src_ip)
+
+        elif label == "suspicious":
+            alerts_count += 1
+            action = "allowed"
+
+        # =========================
+        # 🧠 INTELLIGENCE LAYER
+        # =========================
+        attack_type = classify_attack(features)
+        risk_score = calculate_risk(label, confidence, features)
+        reasons = explain_detection(features)
+        country = get_geo(src_ip)
+
+        log = {
+            "time": time.strftime("%H:%M:%S"),
+            "label": label,
+            "src_ip": src_ip,
+            "traffic_type": "TCP/UDP",
+            "action": action,
+            "confidence": round(confidence, 2),
+
+            "attack_type": attack_type,
+            "risk_score": risk_score,
+            "reasons": reasons,
+
+            # 🌍 NEW
+            "country": country
+        }
+
+        logs.append(log)
+
+        if len(logs) > 100:
+            logs.pop(0)
+
+        # RESET FLOW
+        flow_buffer[src_ip] = {
+            "timestamps": deque(maxlen=50),
+            "sizes": [],
+            "ports": set(),
+            "tcp": 0,
+            "udp": 0
+        }
+
+
+# =========================
+# QUEUE WORKER
+# =========================
+def packet_worker():
+    while True:
+        packet = packet_queue.get()
+        try:
+            handle_packet(packet)
+        except Exception as e:
+            print("Worker Error:", e)
+
+
+# =========================
+# SNIFFER (FAST)
+# =========================
+def process_packet(packet):
+    try:
+        packet_queue.put_nowait(packet)
+    except:
+        pass
+
+
+# =========================
+# START IDS
+# =========================
+def start_ids():
+    threading.Thread(target=packet_worker, daemon=True).start()
+    sniff(prn=process_packet, store=False)
+
+
+# =========================
+# API FUNCTIONS
+# =========================
+def get_ids_data():
+    return {
+        "packets": packets_count,
+        "alerts": alerts_count,
+        "blocked_ips": len(blocked_ips_set),
+        "unique_ips": len(unique_ips),
+        "logs": logs
+    }
+
+
+def get_blocked_ips():
+    return list(blocked_ips_set)
+
+
+def classify_attack(features):
+    packet_count, byte_count, avg_size, rate, tcp_ratio, udp_ratio, ports = features
+
+    # 🚨 DDoS
+    if packet_count > 150 and rate > 40:
+        return "DDoS Attack"
+
+    # 🚨 Port Scan
+    if ports > 30 and packet_count < 100:
+        return "Port Scan"
+
+    # 🚨 Bot / Script Traffic
+    if tcp_ratio > 0.95 and rate > 20:
+        return "Bot Traffic"
+
+    return "Unknown"
+
+
+
+def calculate_risk(label, confidence, features):
+    packet_count, byte_count, avg_size, rate, tcp_ratio, udp_ratio, ports = features
+
+    score = 0
+
+    # Base score
+    if label == "attack":
+        score += 60
+    elif label == "suspicious":
+        score += 30
+
+    # ML confidence
+    score += int(confidence * 30)
+
+    # Behavior factors
+    if rate > 50:
+        score += 10
+    if ports > 50:
+        score += 10
+
+    return min(score, 100)
+
+
+
+def explain_detection(features):
+    packet_count, byte_count, avg_size, rate, tcp_ratio, udp_ratio, ports = features
+
+    reasons = []
+
+    if rate > 30:
+        reasons.append("High traffic rate")
+
+    if packet_count > 100:
+        reasons.append("Too many packets")
+
+    if ports > 30:
+        reasons.append("Multiple ports targeted")
+
+    if tcp_ratio > 0.9:
+        reasons.append("TCP flood pattern")
+
+    return reasons if reasons else ["Normal behavior"]
+
+
+def get_geo(ip):
+    try:
+        import requests
+        res = requests.get(f"http://ip-api.com/json/{ip}", timeout=2)
+        data = res.json()
+        return data.get("country", "Unknown")
+    except:
+        return "Unknown"
+
+--- D:\Minor Project\SmartGuard\services\system_service.py ---
+
+import psutil
+import time
+import joblib
+import os
+import pandas as pd
+
+# =========================
+# PATH SETUP
+# =========================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "rf_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
+
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+
+FEATURE_COLUMNS = [
+    "cpu_usage",
+    "ram_usage",
+    "disk_usage",
+    "disk_read",
+    "disk_write",
+    "battery_percent",
+    "process_count",
+    "heavy_process_count"
+]
+
+# =========================
+# CACHE
+# =========================
+_last_data = None
+_last_time = 0
+CACHE_INTERVAL = 2  # seconds
+
+# =========================
+# PROCESS CACHE (IMPORTANT)
+# =========================
+_process_cache = []
+_process_time = 0
+
+
+def get_top_processes():
+    global _process_cache, _process_time
+
+    # 🔥 cache for 3 sec
+    if time.time() - _process_time < 3:
+        return _process_cache
+
+    processes = []
+
+    for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+        try:
+            cpu = p.info['cpu_percent']
+            if cpu is None:
+                continue
+
+            processes.append({
+                "name": str(p.info['name']),
+                "cpu": float(round(cpu, 1)),
+                "ram": float(round(p.info['memory_percent'], 1))
+            })
+        except:
+            continue
+
+    processes = sorted(processes, key=lambda x: x['cpu'], reverse=True)[:5]
+
+    _process_cache = processes
+    _process_time = time.time()
+
+    return processes
+
+
+# =========================
+# FAST FEATURE EXTRACTION
+# =========================
+def extract_features_fast(cpu):
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+
+    disk_io = psutil.disk_io_counters()
+    disk_read = disk_io.read_bytes / (1024 * 1024)
+    disk_write = disk_io.write_bytes / (1024 * 1024)
+
+    battery = psutil.sensors_battery()
+    battery_percent = battery.percent if battery else 100
+
+    process_count = len(psutil.pids())
+
+    # ⚡ Avoid heavy loop here
+    heavy_process_count = 0
+
+    return [
+        cpu,
+        ram,
+        disk,
+        disk_read,
+        disk_write,
+        battery_percent,
+        process_count,
+        heavy_process_count
+    ]
+
+
+# =========================
+# MAIN FUNCTION
+# =========================
+def get_system_metrics():
+    global _last_data, _last_time
+
+    # 🔥 RETURN CACHE
+    if _last_data and (time.time() - _last_time < CACHE_INTERVAL):
+        return _last_data
+
+    start = time.time()
+
+    try:
+        # =========================
+        # ⚡ NON-BLOCKING CPU
+        # =========================
+        cpu = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory().percent
+        disk = psutil.disk_usage('/').percent
+
+        battery = psutil.sensors_battery()
+        battery_percent = battery.percent if battery else 100
+
+        # =========================
+        # FEATURES
+        # =========================
+        features = extract_features_fast(cpu)
+
+        X_df = pd.DataFrame([features], columns=FEATURE_COLUMNS)
+        X_scaled = scaler.transform(X_df)
+
+        pred = int(model.predict(X_scaled)[0])
+        probs = model.predict_proba(X_scaled)[0].tolist()
+
+        # =========================
+        # STATE
+        # =========================
+        if pred == 0:
+            state = "Normal"
+        elif pred == 1:
+            state = "Moderate"
+        else:
+            state = "High Load"
+
+        # =========================
+        # HEALTH SCORE
+        # =========================
+        normal_p, moderate_p, high_p = probs
+        health = (normal_p * 100) - (high_p * 50)
+        health = round(max(0, min(100, health)), 2)
+
+    except Exception as e:
+        print("ML ERROR:", e)
+
+        # fallback
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        disk = psutil.disk_usage('/').percent
+        battery_percent = 100
+
+        state = "Normal"
+        health = 75
+        pred = 0
+        probs = []
+
+    # =========================
+    # RECOMMENDATIONS
+    # =========================
+    recommendation = []
+
+    if probs and len(probs) > 2 and probs[2] > 0.5:
+        recommendation.append("Close heavy applications")
+
+    if cpu > 80:
+        recommendation.append("Reduce CPU usage")
+
+    if ram > 80:
+        recommendation.append("Free RAM")
+
+    if not recommendation:
+        recommendation.append("System is stable")
+
+    # =========================
+    # FINAL RESPONSE
+    # =========================
+    data = {
+        "cpu": float(cpu),
+        "ram": float(ram),
+        "disk": float(disk),
+        "battery": int(battery_percent),
+
+        "state": state,
+        "health_score": float(health),
+
+        "prediction": int(pred),
+        "probabilities": probs,
+
+        "recommendation": recommendation,
+        "top_processes": get_top_processes()
+    }
+
+    _last_data = data
+    _last_time = time.time()
+
+    print("⚡ API Response Time:", round(time.time() - start, 2), "sec")
+
+    return data
+
 --- D:\Minor Project\SmartGuard\services\__init__.py ---
 
 
+
+--- D:\Minor Project\SmartGuard\services\ml\model_loader.py ---
+
+import joblib
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "rf_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
+
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+
+
+def predict(features):
+    scaled = scaler.transform([features])
+    return model.predict(scaled)[0]
+
+--- D:\Minor Project\SmartGuard\services\ml\system_features.py ---
+
+import psutil
+import time
+
+prev_disk = psutil.disk_io_counters()
+
+
+def get_heavy_process_count(threshold=5):
+    count = 0
+    for p in psutil.process_iter(['cpu_percent']):
+        try:
+            if p.info['cpu_percent'] > threshold:
+                count += 1
+        except:
+            pass
+    return count
+
+
+def extract_system_features():
+    global prev_disk
+
+    cpu = psutil.cpu_percent()
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+
+    # 🔥 Disk IO
+    current_disk = psutil.disk_io_counters()
+    disk_read = current_disk.read_bytes - prev_disk.read_bytes
+    disk_write = current_disk.write_bytes - prev_disk.write_bytes
+    prev_disk = current_disk
+
+    # 🔋 Battery
+    battery = psutil.sensors_battery()
+    battery_percent = battery.percent if battery else 100
+
+    # 🔢 Processes
+    process_count = len(psutil.pids())
+    heavy_process_count = get_heavy_process_count()
+
+    return [
+        cpu,
+        ram,
+        disk,
+        disk_read,
+        disk_write,
+        battery_percent,
+        process_count,
+        heavy_process_count
+    ]
+
+--- D:\Minor Project\SmartGuard\services\ml\system_model_loader.py ---
+
+import joblib
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "rf_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
+
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+
+
+def predict_system(features):
+    try:
+        scaled = scaler.transform([features])
+        pred = model.predict(scaled)[0]
+        probs = model.predict_proba(scaled)[0]
+
+        return pred, probs
+
+    except Exception as e:
+        print("ML Prediction Error:", e)
+        return None, None
 
 --- D:\Minor Project\SmartGuard\ui\tray_app.py ---
 
@@ -1551,50 +2942,535 @@ from PIL import Image
 import subprocess
 import os
 import sys
+import webbrowser
+import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ============================
+# PATH FIX (IMPORTANT)
+# ============================
+if hasattr(sys, "_MEIPASS"):
+    BASE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PYTHONW = os.path.join(ROOT, "venv", "Scripts", "pythonw.exe")
-PYTHON = os.path.join(ROOT, "venv", "Scripts", "python.exe")
+# ============================
+# FILE PATHS
+# ============================
+APP = os.path.join(BASE_DIR, "app.py")
+BG_EXE = os.path.join(BASE_DIR, "background_monitor.exe")
 
-BG_MONITOR = os.path.join(ROOT, "services", "background_monitor.py")
-ALERT = os.path.join(ROOT, "services", "alert_notifier.py")
-APP = os.path.join(ROOT, "app.py")
-ICON = os.path.join(ROOT, "assets", "icon.png")
+ICON = os.path.join(BASE_DIR, "assets", "icon.png")
 
+# ============================
+# GLOBAL PROCESS LIST
+# ============================
 processes = []
 
+# ============================
+# START BACKGROUND SERVICE
+# ============================
 def start_background():
-    processes.append(subprocess.Popen([PYTHONW, BG_MONITOR]))
-    processes.append(subprocess.Popen([PYTHONW, ALERT]))
+    try:
+        if os.path.exists(BG_EXE):
+            p = subprocess.Popen([BG_EXE])
+            processes.append(p)
+        else:
+            print("Background EXE not found")
+    except Exception as e:
+        print("Error starting background:", e)
 
-def open_dashboard():
-    subprocess.Popen([PYTHON, "-m", "streamlit", "run", APP])
+# ============================
+# OPEN DASHBOARD (STREAMLIT)
+# ============================
 
+
+def open_dashboard(icon, item):
+    try:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        app_path = os.path.join(project_root, "app.py")
+
+        python_path = os.path.join(project_root, "venv", "Scripts", "python.exe")
+
+        # 🔥 Start Streamlit
+        subprocess.Popen(
+            [python_path, "-m", "streamlit", "run", app_path],
+            cwd=project_root
+        )
+
+        # wait for server
+        time.sleep(5)
+
+        # 🔥 FORCE open browser (Windows)
+        subprocess.Popen(
+            ["cmd", "/c", "start", "http://localhost:8501"],
+            shell=True
+        )
+
+    except Exception as e:
+        print("Error:", e)
+# ============================
+# EXIT APP
+# ============================
 def exit_app(icon, item):
     for p in processes:
-        p.kill()
-    icon.stop()
-    sys.exit()
+        try:
+            p.kill()
+        except:
+            pass
 
+    icon.stop()
+    os._exit(0)
+
+# ============================
+# SETUP TRAY
+# ============================
 def setup_tray():
-    image = Image.open(ICON)
+    try:
+        image = Image.open(ICON)
+    except:
+        # fallback icon
+        image = Image.new("RGB", (64, 64), color="blue")
+
     menu = (
         item("📊 Open Dashboard", open_dashboard),
         item("❌ Exit", exit_app),
     )
 
-    icon = pystray.Icon("SmartCyberGuard", image, "Smart Cyber Guard", menu)
+    icon = pystray.Icon(
+        "SmartCyberGuard",
+        image,
+        "Smart Cyber Guard",
+        menu
+    )
+
+    # start background first
     start_background()
+
     icon.run()
 
+# ============================
+# MAIN
+# ============================
 if __name__ == "__main__":
     setup_tray()
-
 
 --- D:\Minor Project\SmartGuard\ui\__init__.py ---
 
 
+
+--- D:\Minor Project\SmartGuard\ui\components\alert.py ---
+
+from PySide6.QtWidgets import QMessageBox
+import winsound
+import time
+
+# Prevent alert spam
+LAST_ALERT_TIME = 0
+
+
+def show_alert(title, message, level="warning", cooldown=10):
+    global LAST_ALERT_TIME
+
+    current_time = time.time()
+
+    # 🔥 Cooldown logic (avoid spam)
+    if current_time - LAST_ALERT_TIME < cooldown:
+        return
+
+    LAST_ALERT_TIME = current_time
+
+    msg = QMessageBox()
+    msg.setWindowTitle(title)
+    msg.setText(message)
+
+    if level == "critical":
+        msg.setIcon(QMessageBox.Critical)
+        winsound.Beep(1500, 700)
+
+    elif level == "warning":
+        msg.setIcon(QMessageBox.Warning)
+        winsound.Beep(1000, 500)
+
+    else:
+        msg.setIcon(QMessageBox.Information)
+
+    msg.exec()
+
+--- D:\Minor Project\SmartGuard\ui\components\block_alert.py ---
+
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+from PySide6.QtCore import Qt
+import requests
+import winsound
+
+
+class BlockAlert(QDialog):
+    def __init__(self, ip, attack_type="Unknown", risk_score=0):
+        super().__init__()
+
+        self.ip = ip
+        self.attack_type = attack_type
+        self.risk_score = risk_score
+
+        self.setWindowTitle("🚨 Intrusion Detected")
+        self.setFixedWidth(350)
+
+        # 🔊 SOUND ALERT
+        try:
+            winsound.Beep(1000, 400)
+        except:
+            pass
+
+        layout = QVBoxLayout()
+
+        # =========================
+        # 🔥 UPDATED LABEL
+        # =========================
+        label = QLabel(
+            f"🚨 Threat Detected!\n\n"
+            f"IP: {self.ip}\n"
+            f"Type: {self.attack_type}\n"
+            f"Risk: {self.risk_score}/100"
+        )
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-size: 14px;")
+
+        layout.addWidget(label)
+
+        # =========================
+        # BUTTONS
+        # =========================
+        btn_layout = QHBoxLayout()
+
+        self.ok_btn = QPushButton("OK")
+        self.block_btn = QPushButton("BLOCK")
+
+        self.block_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                padding: 6px 12px;
+                border-radius: 6px;
+            }
+        """)
+
+        btn_layout.addWidget(self.ok_btn)
+        btn_layout.addWidget(self.block_btn)
+
+        layout.addLayout(btn_layout)
+
+        self.setLayout(layout)
+
+        # ACTIONS
+        self.ok_btn.clicked.connect(self.accept)
+        self.block_btn.clicked.connect(self.block_ip)
+
+    def block_ip(self):
+        try:
+            requests.post(
+                "http://127.0.0.1:8000/ids/block",
+                json={"ip": self.ip},
+                timeout=5
+            )
+        except Exception as e:
+            print("Block API Error:", e)
+
+        self.accept()
+
+--- D:\Minor Project\SmartGuard\ui\components\card.py ---
+
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt
+
+
+class Card(QFrame):
+    def __init__(self, title, value="--"):
+        super().__init__()
+
+        self.setFixedSize(200, 120)
+
+        # 🔥 Modern styling
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #1e293b;
+                border-radius: 14px;
+                border: 1px solid #334155;
+            }
+            QFrame:hover {
+                border: 1px solid #3b82f6;
+            }
+        """)
+
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+
+        # Title (small, muted)
+        self.title = QLabel(title)
+        self.title.setStyleSheet("""
+            color: #94a3b8;
+            font-size: 12px;
+        """)
+
+        # Value (big, bold)
+        self.value = QLabel(value)
+        self.value.setStyleSheet("""
+            font-size: 26px;
+            font-weight: bold;
+            color: white;
+        """)
+
+        layout.addWidget(self.title)
+        layout.addWidget(self.value)
+
+        self.setLayout(layout)
+
+    def update_value(self, text):
+        self.value.setText(text)
+
+--- D:\Minor Project\SmartGuard\ui\components\ids_table.py ---
+
+from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+
+
+class IDSTable(QTableWidget):
+    def __init__(self):
+        super().__init__()
+
+        # =========================
+        # 🔥 UPDATED COLUMNS
+        # =========================
+        self.setColumnCount(8)
+        self.setHorizontalHeaderLabels([
+            "Time", "Label", "Source IP", "Country",
+            "Type", "Risk", "Attack", "Action"
+        ])
+
+        header = self.horizontalHeader()
+        header.setVisible(True)
+        header.setMinimumHeight(35)
+        header.setDefaultAlignment(Qt.AlignCenter)
+
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+
+        self.verticalHeader().setVisible(False)
+
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setSelectionMode(QTableWidget.NoSelection)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+
+        self.setStyleSheet("""
+            QTableWidget {
+                background-color: transparent;
+                border: none;
+                gridline-color: #334155;
+                font-size: 13px;
+            }
+
+            QHeaderView::section {
+                background-color: #0f172a;
+                color: #e2e8f0;
+                padding: 8px;
+                border: none;
+                font-weight: bold;
+            }
+
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #334155;
+            }
+        """)
+
+    def update_data(self, logs):
+        self.setRowCount(len(logs))
+
+        for row, log in enumerate(logs):
+            # =========================
+            # DATA ITEMS
+            # =========================
+            time_item = QTableWidgetItem(log.get("time", ""))
+            label_item = QTableWidgetItem(log.get("label", ""))
+            ip_item = QTableWidgetItem(log.get("src_ip", ""))
+            type_item = QTableWidgetItem(log.get("traffic_type", ""))
+
+            risk_item = QTableWidgetItem(str(log.get("risk_score", "")))
+            attack_item = QTableWidgetItem(log.get("attack_type", ""))
+
+            action_item = QTableWidgetItem(log.get("action", ""))
+            country_item = QTableWidgetItem(log.get("country", ""))
+
+            # =========================
+            # ALIGNMENT
+            # =========================
+            label_item.setTextAlignment(Qt.AlignCenter)
+            type_item.setTextAlignment(Qt.AlignCenter)
+            risk_item.setTextAlignment(Qt.AlignCenter)
+            action_item.setTextAlignment(Qt.AlignCenter)
+            
+
+            label = log.get("label", "").lower()
+            action = log.get("action", "").lower()
+            risk = log.get("risk_score", 0)
+
+            # =========================
+            # 🎨 COLOR LOGIC (IMPROVED)
+            # =========================
+            if action == "blocked":
+                row_color = QColor("#7f1d1d")   # dark red
+                text_color = QColor("#fecaca")
+
+            elif label == "attack":
+                row_color = QColor("#991b1b")   # red
+                text_color = QColor("#fee2e2")
+
+            elif label == "suspicious":
+                row_color = QColor("#78350f")   # amber
+                text_color = QColor("#fde68a")
+
+            else:
+                row_color = QColor("#052e16")   # green
+                text_color = QColor("#bbf7d0")
+
+            # =========================
+            # APPLY COLORS
+            # =========================
+            items = [
+                time_item, label_item, ip_item,
+                type_item, risk_item, attack_item, action_item
+            ]
+
+            for item in items:
+                item.setBackground(row_color)
+                item.setForeground(text_color)
+
+            # =========================
+            # 🔥 RISK COLOR OVERRIDE
+            # =========================
+            if risk >= 80:
+                risk_item.setForeground(QColor("#ef4444"))  # red
+            elif risk >= 50:
+                risk_item.setForeground(QColor("#facc15"))  # yellow
+            else:
+                risk_item.setForeground(QColor("#22c55e"))  # green
+
+            # =========================
+            # BLOCKED LABEL
+            # =========================
+            if action == "blocked":
+                action_item.setText("🚫 BLOCKED")
+
+            # =========================
+            # SET ITEMS
+            # =========================
+            self.setItem(row, 0, time_item)
+            self.setItem(row, 1, label_item)
+            self.setItem(row, 2, ip_item)
+            
+
+            self.setItem(row, 3, country_item)
+            self.setItem(row, 4, type_item)
+            self.setItem(row, 5, risk_item)
+            self.setItem(row, 6, attack_item)
+            self.setItem(row, 7, action_item)
+
+--- D:\Minor Project\SmartGuard\ui\components\process_table.py ---
+
+from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtCore import Qt
+
+
+class ProcessTable(QTableWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setColumnCount(3)
+        self.setHorizontalHeaderLabels(["Process", "CPU %", "RAM %"])
+
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+
+        self.verticalHeader().setVisible(False)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+
+    # ✅ FIXED FUNCTION
+    def update_data(self, processes):
+        self.setRowCount(len(processes))
+
+        for row, p in enumerate(processes):
+            name = QTableWidgetItem(str(p.get("name", "")))
+            cpu = QTableWidgetItem(str(p.get("cpu", "")))
+            ram = QTableWidgetItem(str(p.get("ram", "")))
+
+            self.setItem(row, 0, name)
+            self.setItem(row, 1, cpu)
+            self.setItem(row, 2, ram)
+
+--- D:\Minor Project\SmartGuard\ui\components\status_badge.py ---
+
+from PySide6.QtWidgets import QLabel
+
+
+def get_status_badge(state: str):
+    label = QLabel(f" {state} ")
+
+    if state == "Normal":
+        bg = "#22c55e"   # green
+    elif state == "Moderate":
+        bg = "#f59e0b"   # yellow
+    else:
+        bg = "#ef4444"   # red
+
+    label.setStyleSheet(f"""
+        background-color: {bg};
+        color: black;
+        padding: 6px 12px;
+        border-radius: 12px;
+        font-weight: bold;
+    """)
+
+    return label
+
+--- D:\Minor Project\SmartGuard\ui\components\traffic_graph.py ---
+
+import pyqtgraph as pg
+from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtCore import QTimer
+import random
+
+
+class TrafficGraph(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        layout = QVBoxLayout(self)
+
+        self.graph = pg.PlotWidget()
+        self.graph.setTitle("📊 Live Traffic")
+        self.graph.setYRange(0, 200)
+
+        layout.addWidget(self.graph)
+
+        self.data = [0]*50
+        self.curve = self.graph.plot(self.data)
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_graph)
+        self.timer.start(1000)
+
+    def update_graph(self):
+        self.data.pop(0)
+        self.data.append(random.randint(0, 150))  # replace with real packets
+        self.curve.setData(self.data)
 
 --- D:\Minor Project\SmartGuard\ui\dashboard\analytics.py ---
 
@@ -2758,3 +4634,479 @@ def render_system_monitor(refresh_interval=5):
 
 --- D:\Minor Project\SmartGuard\ui\dashboard\system_monitor\__init__.py ---
 
+
+
+--- D:\Minor Project\SmartGuard\ui\pages\ai_page.py ---
+
+import requests
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLineEdit, QPushButton, QLabel, QScrollArea
+)
+from PySide6.QtCore import Qt
+
+
+class AIPage(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        main_layout = QVBoxLayout()
+
+        title = QLabel("🤖 AI System Assistant")
+        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        main_layout.addWidget(title)
+
+        # =========================
+        # CHAT AREA
+        # =========================
+        self.chat_layout = QVBoxLayout()
+        self.chat_layout.setAlignment(Qt.AlignTop)
+
+        container = QWidget()
+        container.setLayout(self.chat_layout)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(container)
+
+        main_layout.addWidget(scroll)
+
+        # =========================
+        # INPUT
+        # =========================
+        input_layout = QHBoxLayout()
+
+        self.input_box = QLineEdit()
+        self.input_box.setPlaceholderText("Ask about your system...")
+
+        send_btn = QPushButton("Send")
+        send_btn.clicked.connect(self.send_message)
+
+        input_layout.addWidget(self.input_box)
+        input_layout.addWidget(send_btn)
+
+        main_layout.addLayout(input_layout)
+
+        self.setLayout(main_layout)
+
+    # =========================
+    # ADD MESSAGE
+    # =========================
+    def add_message(self, text, is_user=True):
+        label = QLabel(text)
+        label.setWordWrap(True)
+
+        if is_user:
+            label.setStyleSheet("background:#2563eb; padding:8px; border-radius:8px;")
+            label.setAlignment(Qt.AlignRight)
+        else:
+            label.setStyleSheet("background:#1e293b; padding:8px; border-radius:8px;")
+            label.setAlignment(Qt.AlignLeft)
+
+        self.chat_layout.addWidget(label)
+
+    # =========================
+    # SEND MESSAGE
+    # =========================
+    def send_message(self):
+        msg = self.input_box.text().strip()
+
+        if not msg:
+            return
+
+        self.add_message(msg, True)
+        self.input_box.clear()
+
+        try:
+            res = requests.post(
+                "http://127.0.0.1:8000/ai",
+                json={"message": msg}
+            )
+            data = res.json()
+
+            reply = data["response"]
+
+        except Exception as e:
+            reply = f"Error: {e}"
+
+        self.add_message(reply, False)
+
+--- D:\Minor Project\SmartGuard\ui\pages\cleaner_page.py ---
+
+import requests
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QPushButton,
+    QListWidget, QMessageBox
+)
+
+
+class CleanerPage(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        main_layout = QVBoxLayout()
+
+        title = QLabel("🧹 Smart File Cleaner")
+        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+
+        main_layout.addWidget(title)
+
+        self.scan_btn = QPushButton("🔍 Scan System")
+        self.clean_btn = QPushButton("🗑 Clean Selected")
+
+        self.scan_btn.clicked.connect(self.scan_files)
+        self.clean_btn.clicked.connect(self.clean_files)
+
+        main_layout.addWidget(self.scan_btn)
+        main_layout.addWidget(self.clean_btn)
+
+        self.file_list = QListWidget()
+        main_layout.addWidget(self.file_list)
+
+        self.setLayout(main_layout)
+
+        self.files_data = []
+
+    # =========================
+    # SCAN
+    # =========================
+    def scan_files(self):
+        self.file_list.clear()
+
+        try:
+            res = requests.get("http://127.0.0.1:8000/cleaner/scan")
+            data = res.json()
+
+            self.files_data = data["files"]
+
+            for f in self.files_data:
+                path = f["path"]
+                size = round(f["size"] / 1024, 2)
+
+                self.file_list.addItem(f"{path} ({size} KB)")
+
+        except Exception as e:
+            self.file_list.addItem(f"Error: {e}")
+
+    # =========================
+    # CLEAN
+    # =========================
+    def clean_files(self):
+        try:
+            paths = [f["path"] for f in self.files_data]
+
+            res = requests.post(
+                "http://127.0.0.1:8000/cleaner/clean",
+                json={"paths": paths}
+            )
+
+            data = res.json()
+
+            QMessageBox.information(self, "Cleaner", data["message"])
+            self.file_list.clear()
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+
+--- D:\Minor Project\SmartGuard\ui\pages\ids_page.py ---
+
+import requests
+import time
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QScrollArea, QHBoxLayout
+)
+from PySide6.QtCore import QTimer, Qt
+
+from ui.components.card import Card
+from ui.components.ids_table import IDSTable
+from ui.components.block_alert import BlockAlert
+from ui.components.traffic_graph import TrafficGraph
+
+
+class IDSPage(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        # =========================
+        # SCROLL SETUP
+        # =========================
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
+        container = QWidget()
+        main_layout = QVBoxLayout(container)
+        main_layout.setAlignment(Qt.AlignTop)
+        main_layout.setSpacing(20)
+
+        # =========================
+        # TITLE
+        # =========================
+        title = QLabel("🛡 Cyber Guard IDPS Dashboard")
+        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        main_layout.addWidget(title)
+
+        # =========================
+        # CARDS
+        # =========================
+        card_layout = QHBoxLayout()
+
+        self.packet_card = Card("Packets")
+        self.alert_card = Card("Alerts")
+        self.block_card = Card("Blocked IPs")
+        self.unique_card = Card("Unique IPs")
+
+        card_layout.addWidget(self.packet_card)
+        card_layout.addWidget(self.alert_card)
+        card_layout.addWidget(self.block_card)
+        card_layout.addWidget(self.unique_card)
+
+        main_layout.addLayout(card_layout)
+
+        # =========================
+        # BLOCKED IP LIST
+        # =========================
+        self.blocked_label = QLabel("🚫 Blocked IPs")
+        self.blocked_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+
+        self.blocked_list = QLabel("None")
+        self.blocked_list.setStyleSheet("""
+            background-color: #1e293b;
+            padding: 10px;
+            border-radius: 10px;
+        """)
+
+        main_layout.addWidget(self.blocked_label)
+        main_layout.addWidget(self.blocked_list)
+
+        # =========================
+        # TABLE
+        # =========================
+        table_title = QLabel("🚨 Live Events")
+        table_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+
+        self.table = IDSTable()
+
+        main_layout.addWidget(table_title)
+
+        self.table.setMinimumHeight(250)
+        self.table.setMaximumHeight(300)
+        main_layout.addWidget(self.table, 1)   # table gets limited space
+
+        # =========================
+        # ✅ GRAPH (FIXED POSITION)
+        # =========================
+        graph_title = QLabel("📊 Traffic Analysis")
+        graph_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+
+        self.graph = TrafficGraph()
+
+        main_layout.addWidget(graph_title)
+        self.graph.setMinimumHeight(250)
+        main_layout.addWidget(self.graph, 2)   # graph gets more space
+
+        # =========================
+        # SET SCROLL (AFTER EVERYTHING)
+        # =========================
+        scroll.setWidget(container)
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.addWidget(scroll)
+        self.setLayout(outer_layout)
+
+        # =========================
+        # ALERT CONTROL (FIXED)
+        # =========================
+        self.alerted_ips = {}   # ip -> last alert time
+        self.ALERT_COOLDOWN = 20  # seconds
+
+        # =========================
+        # TIMER (CORRECT POSITION)
+        # =========================
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_data)
+        self.timer.start(2000)
+
+
+    # =========================
+    # MAIN UPDATE FUNCTION
+    # =========================
+    def update_data(self):
+        try:
+            # =========================
+            # IDS DATA
+            # =========================
+            res = requests.get("http://127.0.0.1:8000/ids", timeout=10)
+            data = res.json()
+
+            packets = data.get("packets", 0)
+            alerts = data.get("alerts", 0)
+            blocked = data.get("blocked_ips", 0)
+            unique = data.get("unique_ips", 0)
+
+            self.packet_card.update_value(str(packets))
+            self.alert_card.update_value(str(alerts))
+            self.block_card.update_value(str(blocked))
+            self.unique_card.update_value(str(unique))
+
+            logs = data.get("logs", [])[-20:]
+            self.table.update_data(logs)
+
+            # =========================
+            # BLOCKED IP LIST
+            # =========================
+            try:
+                res_block = requests.get(
+                    "http://127.0.0.1:8000/ids/blocked",
+                    timeout=10
+                )
+                ips = res_block.json().get("blocked_ips", [])
+
+                if ips:
+                    self.blocked_list.setText("\n".join(ips[:10]))
+                else:
+                    self.blocked_list.setText("None")
+
+            except Exception as e:
+                print("Blocked API Error:", e)
+
+            # =========================
+            # 🔥 SMART ALERT (FINAL FIX)
+            # =========================
+            if not logs:
+                return
+
+            latest = logs[-1]
+
+            label = latest.get("label", "")
+            ip = latest.get("src_ip", "")
+            confidence = latest.get("confidence", 0)
+
+            now = time.time()
+            last_time = self.alerted_ips.get(ip, 0)
+
+            # 🚀 ONLY REAL ATTACK + COOLDOWN
+            if (
+                label == "attack"
+                and confidence >= 0.7
+                and (now - last_time > self.ALERT_COOLDOWN)
+            ):
+                attack_type = latest.get("attack_type", "Unknown")
+                risk_score = latest.get("risk_score", 0)
+
+                dialog = BlockAlert(ip, attack_type, risk_score)
+                dialog.exec()
+
+                self.alerted_ips[ip] = now
+
+        except Exception as e:
+            print("IDS API Error:", e)
+
+--- D:\Minor Project\SmartGuard\ui\pages\system_page.py ---
+
+import requests
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QScrollArea
+from PySide6.QtCore import QTimer, Qt, QThread, Signal
+
+from ui.components.card import Card
+from ui.components.process_table import ProcessTable
+
+
+# =========================
+# WORKER THREAD (IMPORTANT)
+# =========================
+class SystemWorker(QThread):
+    data_fetched = Signal(dict)
+
+    def run(self):
+        try:
+            res = requests.get("http://127.0.0.1:8000/metrics", timeout=10)
+            self.data_fetched.emit(res.json())
+        except Exception as e:
+            print("System API Error:", e)
+            self.data_fetched.emit({})
+
+
+class SystemPage(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setSpacing(20)
+
+        title = QLabel("💻 System Performance Monitor")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # CARDS
+        card_layout = QHBoxLayout()
+        self.cpu_card = Card("CPU %")
+        self.ram_card = Card("RAM %")
+        self.disk_card = Card("Disk %")
+        self.battery_card = Card("Battery %")
+
+        card_layout.addWidget(self.cpu_card)
+        card_layout.addWidget(self.ram_card)
+        card_layout.addWidget(self.disk_card)
+        card_layout.addWidget(self.battery_card)
+
+        layout.addLayout(card_layout)
+
+        # STATE
+        self.state_label = QLabel("State: --")
+        self.health_label = QLabel("Health Score: --")
+
+        layout.addWidget(self.state_label)
+        layout.addWidget(self.health_label)
+
+        # RECOMMENDATIONS
+        self.recommend_box = QLabel("Loading...")
+        self.recommend_box.setStyleSheet("background:#1e293b; padding:10px; border-radius:10px;")
+
+        layout.addWidget(QLabel("🛠 Recommended Actions"))
+        layout.addWidget(self.recommend_box)
+
+        # PROCESS TABLE
+        layout.addWidget(QLabel("🔥 Top Processes"))
+        self.process_table = ProcessTable()
+        layout.addWidget(self.process_table)
+
+        scroll.setWidget(container)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(scroll)
+
+        self.worker = None
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.fetch_data)
+        self.timer.start(3000)
+
+    def fetch_data(self):
+        if self.worker and self.worker.isRunning():
+            return
+
+        self.worker = SystemWorker()
+        self.worker.data_fetched.connect(self.update_ui)
+        self.worker.start()
+
+    def update_ui(self, data):
+        if not data:
+            return
+
+        self.cpu_card.update_value(f"{data.get('cpu', 0):.1f}")
+        self.ram_card.update_value(f"{data.get('ram', 0):.1f}")
+        self.disk_card.update_value(f"{data.get('disk', 0):.1f}")
+        self.battery_card.update_value(f"{data.get('battery', 0):.0f}")
+
+        self.state_label.setText(f"State: {data.get('state', '--')}")
+        self.health_label.setText(f"Health Score: {data.get('health_score', '--')}")
+
+        rec = data.get("recommendation", [])
+        self.recommend_box.setText("\n".join(rec))
+
+        self.process_table.update_data(data.get("top_processes", []))

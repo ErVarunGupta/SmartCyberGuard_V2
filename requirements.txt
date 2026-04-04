@@ -15,3 +15,6 @@ scapy
 
 sounddevice
 plyer
+
+pyinstaller
+pystray

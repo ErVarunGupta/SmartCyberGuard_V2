@@ -1,61 +1,46 @@
-# --------------------------------
-# SmartCyberGuard Background Agent (AI Powered)
-# --------------------------------
-
-# ===== SINGLE INSTANCE (WINDOWS MUTEX) =====
 import sys
-import ctypes
-
-kernel32 = ctypes.windll.kernel32
-
-mutex = kernel32.CreateMutexW(
-    None,
-    True,
-    "SmartCyberGuard_BackgroundMonitor"
-)
-
-ERROR_ALREADY_EXISTS = 183
-
-if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
-    sys.exit(0)
-
-# ===== STANDARD IMPORTS =====
 import os
 import time
 import threading
 import pandas as pd
 import joblib
 
-# ===== PATH HANDLING =====
+# ==============================
+# PATH FIX (VERY IMPORTANT)
+# ==============================
 if hasattr(sys, "_MEIPASS"):
     BASE_DIR = sys._MEIPASS
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, BASE_DIR)
 
-# ===== PROJECT IMPORTS =====
+# ==============================
+# SAFE IMPORTS
+# ==============================
 from features.monitoring.monitor import collect_system_metrics
 from features.ai_assistant.predictor import predict_system_state
 from features.anomaly_detection.network_sniffer import start_sniffing
 from features.ai_assistant.ai_brain import analyze
-# from core.action_engine import execute
-# from core.voice.output import speak
 from core.logger.logger import log_alert
+from core.data_logger import log_system_data
 
-# from utils.data_logger import log_system_data
-
-# ===== RESOURCE PATH =====
-def resource_path(relative_path: str) -> str:
+# ==============================
+# RESOURCE PATH
+# ==============================
+def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(BASE_DIR, relative_path)
 
-# ===== LOAD ML MODEL =====
+# ==============================
+# LOAD ML MODEL
+# ==============================
 model = None
 try:
-    model = joblib.load(resource_path("models/model.pkl"))
+    model_path = resource_path("models/model.pkl")
+    model = joblib.load(model_path)
+
     log_alert(
         alert_type="MODEL_LOADED",
         source="AGENT",
@@ -68,11 +53,20 @@ except Exception as e:
         extra_info=str(e)
     )
 
-# ===== START IDS THREAD =====
-ids_thread = threading.Thread(
-    target=start_sniffing,
-    daemon=True
-)
+# ==============================
+# START IDS THREAD
+# ==============================
+def start_ids():
+    try:
+        start_sniffing()
+    except Exception as e:
+        log_alert(
+            alert_type="IDS_ERROR",
+            source="AGENT",
+            extra_info=str(e)
+        )
+
+ids_thread = threading.Thread(target=start_ids, daemon=True)
 ids_thread.start()
 
 log_alert(
@@ -81,64 +75,38 @@ log_alert(
     extra_info="IDS running"
 )
 
-# ===== SPEAK CONTROL (ANTI-SPAM) =====
-LAST_SPOKEN = ""
-LAST_SPOKEN_TIME = 0
-SPEAK_COOLDOWN = 15  # seconds
-
-def safe_speak(message):
-    global LAST_SPOKEN, LAST_SPOKEN_TIME
-
-    now = time.time()
-
-    # prevent repeating same message
-    if message == LAST_SPOKEN and (now - LAST_SPOKEN_TIME < SPEAK_COOLDOWN):
-        return
-
-    LAST_SPOKEN = message
-    LAST_SPOKEN_TIME = now
-
-    speak(message)
-
-# ===== MAIN LOOP =====
-print("🚀 SmartCyberGuard AI Agent Started")
+# ==============================
+# MAIN LOOP
+# ==============================
+print("🚀 SmartCyberGuard Background Service Started")
 
 while True:
     try:
         # 1️⃣ Collect metrics
         metrics = collect_system_metrics()
 
-        log_system_data(metrics)
+        # 2️⃣ Log data safely
+        try:
+            log_system_data()
+        except:
+            pass
 
-        # 2️⃣ Prepare ML features
+        # 3️⃣ Prepare ML features
         features_df = pd.DataFrame([{
             "cpu_usage": metrics["cpu"],
             "ram_usage": metrics["ram"],
             "disk_usage": metrics["disk"],
-            "disk_read": metrics["disk_read"],
-            "disk_write": metrics["disk_write"],
+            "disk_read": metrics.get("disk_read", 0),
+            "disk_write": metrics.get("disk_write", 0),
             "battery_percent": metrics["battery"],
-            "process_count": metrics["process_count"],
+            "process_count": metrics.get("process_count", 0),
             "heavy_process_count": 0
         }])
 
-        # 3️⃣ Predict system state
+        # 4️⃣ Predict system state
         pred, ml_available = predict_system_state(model, features_df)
 
-        # 4️⃣ Intrusion flag (basic for now)
-        intrusion_detected = False   # future: connect with IDS output
-
-        # 5️⃣ AI BRAIN DECISION
-        message, actions = analyze(metrics, pred, intrusion_detected)
-
-        # 6️⃣ Speak intelligently
-        safe_speak(message)
-
-        # 7️⃣ Execute actions
-        for action in actions:
-            execute(action)
-
-        # 8️⃣ Logging important events
+        # 5️⃣ Basic alert logging
         if pred == 2:
             log_alert(
                 alert_type="HANG_RISK",
@@ -157,7 +125,7 @@ while True:
                 battery=metrics["battery"]
             )
 
-        # 9️⃣ Wait
+        # 6️⃣ Sleep
         time.sleep(5)
 
     except Exception as e:
