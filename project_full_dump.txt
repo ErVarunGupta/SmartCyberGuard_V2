@@ -414,7 +414,7 @@ def log_system_data():
 
 --- D:\Minor Project\SmartGuard\core\config\api_keys.py ---
 
-GEMINI_API_KEY = "AIzaSyB3VG0XXFhopkcDmDjaqcxx0ry-CFk7s94"
+
 
 --- D:\Minor Project\SmartGuard\core\config\constants.py ---
 
