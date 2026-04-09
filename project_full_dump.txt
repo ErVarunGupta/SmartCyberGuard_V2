@@ -40,6 +40,7 @@ SmartGuard/
             logger.py
             __init__.py
     data/
+        cleaner_dataset.csv
         ids_dataset.csv
         kddcup.data_10_percent.gz
         kddcup.names
@@ -85,6 +86,7 @@ SmartGuard/
     logs/
         alerts.log
     models/
+        cleaner_model.pkl
         ids_iso_model.pkl
         ids_rf_model.pkl
         ids_scaler.pkl
@@ -93,7 +95,9 @@ SmartGuard/
         scaler.pkl
         train_system_model.py
     model_training/
+        cleaner_trainer.py
         generate_ids_data.py
+        train_cleaner_model.py
         train_ids_model.py
         train_system_model.py
     schema/
@@ -102,6 +106,7 @@ SmartGuard/
     services/
         ai_service.py
         background_monitor.py
+        cleaner_engine.py
         cleaner_service.py
         ids_service.py
         system_service.py
@@ -633,6 +638,7 @@ from pydantic import BaseModel
 # from services.system_service import get_system_data
 from services.ai_service import generate_response
 from services.cleaner_service import scan_files, delete_files
+from services.cleaner_engine import scan_system
 from services.system_service import get_system_metrics
 
 app = FastAPI()
@@ -740,20 +746,69 @@ def ai_chat(req: ChatRequest):
     return {"response": generate_response(req.message)}
 
 
-# =========================
+## =========================
 # CLEANER
 # =========================
-@app.get("/cleaner/scan")
-def cleaner_scan():
-    files, total_size = scan_files()
+
+# 🔥 Helper function (NOT API)
+def generate_insights(safe, junk, review):
+    safe_size = sum(f["size"] for f in safe)
+    junk_size = sum(f["size"] for f in junk)
+
+    total_cleanable = round(safe_size + junk_size, 2)
+
+    old_files = len([f for f in review if f["age_days"] > 30])
 
     return {
-        "files": files,
-        "total_files": len(files),
-        "total_size": round(total_size / (1024 * 1024), 2)  # MB
+        "freeable_space_mb": total_cleanable,
+        "safe_cleanup_mb": round(safe_size, 2),
+        "junk_cleanup_mb": round(junk_size, 2),
+        "old_files_count": old_files,
+        "recommendation": "Clean SAFE files first for risk-free optimization"
     }
 
 
+# ✅ MAIN SCAN API
+@app.get("/cleaner/scan")
+def cleaner_scan():
+    files, total_size = scan_system()
+
+    safe, junk, review, important = [], [], [], []
+
+    for f in files:
+        cat = f.get("category")
+
+        if cat == "SAFE":
+            safe.append(f)
+        elif cat == "JUNK":
+            junk.append(f)
+        elif cat == "IMPORTANT":
+            important.append(f)
+        else:
+            review.append(f)
+
+    insights = generate_insights(safe, junk, review)
+
+    return {
+        "summary": {
+            "total_files": len(files),
+            "safe_files": len(safe),
+            "junk_files": len(junk),
+            "review_files": len(review),
+            "important_files": len(important),
+            "total_size_mb": round(total_size, 2)
+        },
+        "insights": insights,
+        "safe": safe[:200],
+        "junk": junk[:200],
+        "review": review[:200],
+        "important": important[:200]
+    }
+
+
+# =========================
+# DELETE API
+# =========================
 class CleanRequest(BaseModel):
     paths: list
 
@@ -763,13 +818,27 @@ def cleaner_clean(req: CleanRequest):
     deleted = delete_files(req.paths)
 
     return {
-        "message": f"{deleted} files deleted successfully"
+        "deleted_files": deleted,
+        "message": f"{len(deleted)} files deleted successfully"
     }
 
 
-# threading.Thread(target=simulate_network, daemon=True).start()
+
+import os
+import subprocess
+from fastapi import HTTPException
 
 
+@app.get("/cleaner/preview")
+def preview_file(path: str):
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        os.startfile(path)   # Windows only
+        return {"message": "File opened"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 --- D:\Minor Project\SmartGuard\app\bootstrap.py ---
 
@@ -1772,6 +1841,85 @@ model.fit(X, y)
 
 joblib.dump(model, "models/system_model.pkl")
 
+--- D:\Minor Project\SmartGuard\model_training\cleaner_trainer.py ---
+
+import os
+import time
+import pandas as pd
+
+SCAN_PATHS = [
+    os.path.expanduser("~\\Downloads"),
+    os.path.expanduser("~\\Desktop"),
+    os.path.expanduser("~\\AppData\\Local\\Temp")
+]
+
+
+def extract_features(path):
+    try:
+        stat = os.stat(path)
+
+        size = stat.st_size / (1024 * 1024)
+        modified = stat.st_mtime
+
+        now = time.time()
+
+        age_days = int((now - modified) / 86400)
+
+        ext = os.path.splitext(path)[1].lower()
+
+        return {
+            "path": path,
+            "size": size,
+            "age_days": age_days,
+            "is_temp": int("temp" in path.lower()),
+            "is_download": int("download" in path.lower()),
+            "ext_len": len(ext)
+        }
+
+    except:
+        return None
+
+
+def auto_label(file):
+    # Initial labeling logic (semi-AI)
+    if file["is_temp"] == 1 and file["age_days"] > 3:
+        return 0  # SAFE
+
+    if file["age_days"] > 60 and file["size"] > 50:
+        return 1  # REVIEW
+
+    return 2  # IMPORTANT
+
+
+def generate_dataset(limit=5000):
+    data = []
+
+    for base in SCAN_PATHS:
+        for root, _, files in os.walk(base):
+            for f in files:
+                path = os.path.join(root, f)
+
+                features = extract_features(path)
+                if not features:
+                    continue
+
+                label = auto_label(features)
+
+                features["label"] = label
+                data.append(features)
+
+                if len(data) >= limit:
+                    break
+
+    df = pd.DataFrame(data)
+    df.to_csv("data/cleaner_dataset.csv", index=False)
+
+    print("✅ Dataset saved: cleaner_dataset.csv")
+
+
+if __name__ == "__main__":
+    generate_dataset()
+
 --- D:\Minor Project\SmartGuard\model_training\generate_ids_data.py ---
 
 import random
@@ -1872,6 +2020,37 @@ df = pd.DataFrame(data, columns=[
 df.to_csv("data/ids_dataset.csv", index=False)
 
 print("✅ Dataset created")
+
+--- D:\Minor Project\SmartGuard\model_training\train_cleaner_model.py ---
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+import joblib
+
+# Load dataset
+df = pd.read_csv("data/cleaner_dataset.csv")
+
+X = df[["size", "age_days", "is_temp", "is_download", "ext_len"]]
+y = df["label"]
+
+# Split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+# Model
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+
+# Accuracy
+acc = model.score(X_test, y_test)
+print(f"Accuracy: {acc}")
+
+# Save
+joblib.dump(model, "models/cleaner_model.pkl")
+
+print("✅ Model saved")
 
 --- D:\Minor Project\SmartGuard\model_training\train_ids_model.py ---
 
@@ -2192,6 +2371,253 @@ while True:
             extra_info=str(e)
         )
         time.sleep(5)
+
+--- D:\Minor Project\SmartGuard\services\cleaner_engine.py ---
+
+import os
+import time
+import joblib
+import numpy as np
+
+import time
+SCAN_TIMEOUT = 25   # seconds
+
+
+MODEL_PATH = "models/cleaner_model.pkl"
+
+try:
+    model = joblib.load(MODEL_PATH)
+except:
+    model = None
+
+# =========================
+# CONFIG (SAFE PATHS ONLY)
+# =========================
+SCAN_PATHS = [
+    os.path.expanduser("~\\AppData\\Local\\Temp"),
+    os.path.expanduser("~\\Downloads")
+]
+
+# 🚫 Never touch system folders
+SYSTEM_PATHS = [
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)"
+]
+
+SAFE_EXT = (".tmp", ".log", ".cache", ".bak")
+IMPORTANT_EXT = (".exe", ".dll", ".sys", ".ini")
+
+
+# =========================
+# SAFETY CHECK
+# =========================
+def is_system_file(path):
+    return any(path.startswith(p) for p in SYSTEM_PATHS)
+
+
+# =========================
+# FEATURE EXTRACTION
+# =========================
+def extract_features(path):
+    try:
+        stat = os.stat(path)
+
+        size_mb = stat.st_size / (1024 * 1024)
+        modified = stat.st_mtime
+        accessed = stat.st_atime
+
+        now = time.time()
+
+        return {
+            "path": path,
+            "size": round(size_mb, 2),
+            "age_days": int((now - modified) / 86400),
+            "last_access_days": int((now - accessed) / 86400),
+            "extension": os.path.splitext(path)[1].lower(),
+            "is_temp": "temp" in path.lower(),
+            "is_download": "download" in path.lower()
+        }
+
+    except Exception:
+        return None
+
+
+# =========================
+# CLASSIFICATION ENGINE
+# =========================
+def classify_file(file):
+    path = file["path"]
+    ext = file["extension"]
+    age = file["age_days"]
+    size = file["size"]
+
+    # 🚫 SYSTEM PROTECTION
+    if is_system_file(path) or ext in IMPORTANT_EXT:
+        return "IMPORTANT"
+
+    # 🟢 SAFE TEMP FILES
+    if ext in SAFE_EXT and age > 3:
+        return "SAFE"
+
+    # 🟡 OLD & LARGE FILES
+    if age > 60 and size > 50:
+        return "JUNK"
+
+    # 🔵 RECENT FILES
+    if age < 7:
+        return "IMPORTANT"
+
+    return "REVIEW"
+
+
+# =========================
+# MAIN SCAN FUNCTION
+# =========================
+import concurrent.futures
+
+MAX_WORKERS = 6   # optimal for laptop
+MAX_FILES = 1000
+
+
+def scan_folder(base):
+    results = []
+    total_size = 0
+
+   
+
+    for root, _, files in os.walk(base):
+        if len(results) >= MAX_FILES:
+            break
+        for f in files:
+            if len(results) > MAX_FILES:
+                break
+            path = os.path.join(root, f)
+
+            data = extract_features(path)
+            if data["size"] < 0.001:   # skip useless tiny files
+                continue
+            if not data:
+                continue
+
+
+            rule_category = classify_file(data)
+
+            ai_pred, confidence = ai_predict(data)
+
+            mapping = ["SAFE", "REVIEW", "IMPORTANT"]
+
+            if ai_pred is not None and confidence > 0.75:
+                category = mapping[ai_pred]
+            else:
+                category = rule_category
+
+            explanation = explain_file(data, category)
+
+            data["category"] = category
+            data["reason"] = explanation["reason"]
+            data["confidence"] = explanation["confidence"]
+            data["priority"] = explanation["priority"]
+
+            if category in ["SAFE", "JUNK"]:
+                total_size += data["size"]
+
+            results.append(data)
+
+    return results, total_size
+
+
+def scan_system():
+    all_results = []
+    total_size = 0
+    start_time = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
+
+        for path in SCAN_PATHS:
+            if os.path.exists(path):
+                futures.append(executor.submit(scan_folder, path))
+
+            if time.time() - start_time > SCAN_TIMEOUT:
+                return all_results, total_size
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                results, size = future.result()
+                all_results.extend(results)
+                total_size += size
+            except Exception:
+                continue
+
+    return all_results, total_size
+
+
+
+def explain_file(file, category):
+
+    age = file["age_days"]
+    size = file["size"]
+    ext = file["extension"]
+
+    # =========================
+    # SAFE
+    # =========================
+    if category == "SAFE":
+        return {
+            "reason": "Temporary/cache file not used recently",
+            "confidence": 90,
+            "priority": "HIGH"
+        }
+
+    # =========================
+    # JUNK
+    # =========================
+    elif category == "JUNK":
+        return {
+            "reason": f"Old file ({age} days) and large size ({size} MB)",
+            "confidence": 80,
+            "priority": "MEDIUM"
+        }
+
+    # =========================
+    # REVIEW
+    # =========================
+    elif category == "REVIEW":
+        return {
+            "reason": "May be important, review before deleting",
+            "confidence": 60,
+            "priority": "LOW"
+        }
+
+    # =========================
+    # IMPORTANT
+    # =========================
+    return {
+        "reason": "System or recent file, do not delete",
+        "confidence": 95,
+        "priority": "CRITICAL"
+    }
+
+
+import pandas as pd
+
+def ai_predict(file):
+    if model is None:
+        return None, 0
+
+    df = pd.DataFrame([{
+        "size": file["size"],
+        "age_days": file["age_days"],
+        "is_temp": int(file["is_temp"]),
+        "is_download": int(file["is_download"]),
+        "ext_len": len(file["extension"])
+    }])
+
+    pred = model.predict(df)[0]
+    prob = max(model.predict_proba(df)[0])
+
+    return pred, prob
 
 --- D:\Minor Project\SmartGuard\services\cleaner_service.py ---
 
@@ -4734,77 +5160,290 @@ class AIPage(QWidget):
 --- D:\Minor Project\SmartGuard\ui\pages\cleaner_page.py ---
 
 import requests
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton,
-    QListWidget, QMessageBox
+    QTabWidget, QTableWidget, QTableWidgetItem,
+    QHBoxLayout, QMessageBox
 )
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHeaderView
+from PySide6.QtCore import QThread, Signal
+
+
+
+
+class ScanWorker(QThread):
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def run(self):
+        try:
+            import requests
+            res = requests.get(
+                "http://127.0.0.1:8000/cleaner/scan",
+                timeout=60
+            )
+            self.finished.emit(res.json())
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class CleanerPage(QWidget):
     def __init__(self):
         super().__init__()
 
-        main_layout = QVBoxLayout()
+        layout = QVBoxLayout()
 
-        title = QLabel("🧹 Smart File Cleaner")
+        title = QLabel("🧹 Smart AI File Cleaner")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        layout.addWidget(title)
 
-        main_layout.addWidget(title)
+        self.info_label = QLabel("📊 Files: 0 | Selected: 0")
+        self.info_label.setStyleSheet("color: #94a3b8;")
 
-        self.scan_btn = QPushButton("🔍 Scan System")
-        self.clean_btn = QPushButton("🗑 Clean Selected")
+        layout.addWidget(self.info_label)
+
+
+        # =========================
+        # BUTTONS
+        # =========================
+        btn_layout = QHBoxLayout()
+
+        self.scan_btn = QPushButton("🔍 Scan")
+        self.delete_btn = QPushButton("🗑 Delete Selected")
+        self.select_all_btn = QPushButton("✅ Select All")
+        self.delete_all_btn = QPushButton("🔥 Delete All")
+        self.preview_btn = QPushButton("👁 Preview")
 
         self.scan_btn.clicked.connect(self.scan_files)
-        self.clean_btn.clicked.connect(self.clean_files)
+        self.delete_btn.clicked.connect(self.delete_selected)
 
-        main_layout.addWidget(self.scan_btn)
-        main_layout.addWidget(self.clean_btn)
+        self.select_all_btn.clicked.connect(self.select_all)
+        self.delete_all_btn.clicked.connect(self.delete_all)
+        self.preview_btn.clicked.connect(self.preview_file)
 
-        self.file_list = QListWidget()
-        main_layout.addWidget(self.file_list)
+        btn_layout.addWidget(self.scan_btn)
+        btn_layout.addWidget(self.delete_btn)
 
-        self.setLayout(main_layout)
 
-        self.files_data = []
+
+        btn_layout.addWidget(self.scan_btn)
+        btn_layout.addWidget(self.select_all_btn)
+        btn_layout.addWidget(self.delete_btn)
+        btn_layout.addWidget(self.delete_all_btn)
+        btn_layout.addWidget(self.preview_btn)
+
+        layout.addLayout(btn_layout)
+
+       
+
+        # =========================
+        # TABS
+        # =========================
+        self.tabs = QTabWidget()
+
+        self.safe_table = self.create_table()
+        self.junk_table = self.create_table()
+        self.review_table = self.create_table()
+
+        self.tabs.addTab(self.safe_table, "🟢 Safe")
+        self.tabs.addTab(self.junk_table, "🟡 Junk")
+        self.tabs.addTab(self.review_table, "🔵 Review")
+
+        layout.addWidget(self.tabs)
+
+        self.setLayout(layout)
+
+        self.data = {}
+
+    # =========================
+    # TABLE CREATOR
+    # =========================
+    def create_table(self):
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels([
+            "Path", "Size (MB)", "Age", "Reason", "Confidence"
+        ])
+
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.MultiSelection)
+
+        header = table.horizontalHeader()
+
+        header.setStretchLastSection(False)
+
+        header.setSectionResizeMode(0, QHeaderView.Stretch)   # ✅ FIXED
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+        table.setWordWrap(False)
+        table.setTextElideMode(Qt.ElideMiddle)
+
+        table.itemSelectionChanged.connect(self.update_selected_count)
+
+        return table
+
+    # =========================
+    # LOAD DATA INTO TABLE
+    # =========================
+    def load_table(self, table, files):
+        table.setRowCount(len(files))
+
+        for row, f in enumerate(files):
+            table.setItem(row, 0, QTableWidgetItem(f["path"]))
+            table.setItem(row, 1, QTableWidgetItem(str(f["size"])))
+            table.setItem(row, 2, QTableWidgetItem(str(f["age_days"])))
+            table.setItem(row, 3, QTableWidgetItem(f["reason"]))
+            table.setItem(row, 4, QTableWidgetItem(str(f["confidence"])))
 
     # =========================
     # SCAN
     # =========================
     def scan_files(self):
-        self.file_list.clear()
+        self.scan_btn.setText("Scanning...")
+        self.scan_btn.setEnabled(False)
 
-        try:
-            res = requests.get("http://127.0.0.1:8000/cleaner/scan")
-            data = res.json()
+        self.worker = ScanWorker()
 
-            self.files_data = data["files"]
+        self.worker.finished.connect(self.on_scan_complete)
+        self.worker.error.connect(self.on_scan_error)
 
-            for f in self.files_data:
-                path = f["path"]
-                size = round(f["size"] / 1024, 2)
-
-                self.file_list.addItem(f"{path} ({size} KB)")
-
-        except Exception as e:
-            self.file_list.addItem(f"Error: {e}")
+        self.worker.start()
 
     # =========================
-    # CLEAN
+    # DELETE SELECTED
     # =========================
-    def clean_files(self):
-        try:
-            paths = [f["path"] for f in self.files_data]
+    def delete_selected(self):
+        current_table = self.tabs.currentWidget()
 
-            res = requests.post(
+        selected_rows = current_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.information(self, "Info", "No files selected")
+            return
+
+        paths = []
+
+        for row in selected_rows:
+            path = current_table.item(row.row(), 0).text()
+            paths.append(path)
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Delete {len(paths)} files?"
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            requests.post(
                 "http://127.0.0.1:8000/cleaner/clean",
                 json={"paths": paths}
             )
 
-            data = res.json()
+            QMessageBox.information(self, "Success", "Files deleted")
 
-            QMessageBox.information(self, "Cleaner", data["message"])
-            self.file_list.clear()
+            self.scan_files()  # refresh
 
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+
+
+    def select_all(self):
+        table = self.tabs.currentWidget()
+        table.selectAll()
+        self.update_selected_count()
+
+
+    def delete_all(self):
+        table = self.tabs.currentWidget()
+
+        row_count = table.rowCount()
+
+        if row_count == 0:
+            QMessageBox.information(self, "Info", "No files available")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Delete ALL {row_count} files?"
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        paths = []
+
+        for row in range(row_count):
+            path = table.item(row, 0).text()
+            paths.append(path)
+
+        try:
+            requests.post(
+                "http://127.0.0.1:8000/cleaner/clean",
+                json={"paths": paths}
+            )
+
+            QMessageBox.information(self, "Success", "All files deleted")
+            self.scan_files()
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+
+    
+    def update_selected_count(self):
+        table = self.tabs.currentWidget()
+        selected = len(table.selectionModel().selectedRows())
+
+        total = table.rowCount()
+
+        self.info_label.setText(f"📊 Files: {total} | Selected: {selected}")
+
+
+    def on_scan_complete(self, data):
+        self.scan_btn.setText("🔍 Scan")
+        self.scan_btn.setEnabled(True)
+
+        self.data = data
+
+        self.load_table(self.safe_table, data.get("safe", []))
+        self.load_table(self.junk_table, data.get("junk", []))
+        self.load_table(self.review_table, data.get("review", []))
+
+        total = data["summary"]["total_files"]
+        self.info_label.setText(f"📊 Files: {total} | Selected: 0")
+
+
+    def on_scan_error(self, error):
+        self.scan_btn.setText("🔍 Scan")
+        self.scan_btn.setEnabled(True)
+
+        QMessageBox.warning(self, "Error", error)
+
+    def preview_file(self):
+        table = self.tabs.currentWidget()
+        selected_rows = table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.information(self, "Info", "Select a file first")
+            return
+
+        # Only preview first selected file
+        row = selected_rows[0].row()
+        path = table.item(row, 0).text()
+
+        try:
+            requests.get(
+                "http://127.0.0.1:8000/cleaner/preview",
+                params={"path": path}
+            )
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
 

@@ -87,6 +87,7 @@ class SmartGuardApp(QWidget):
         # ======================
         # DARK THEME (PROFESSIONAL)
         # ======================
+        
         self.setStyleSheet("""
             QWidget {
                 background-color: #0f172a;

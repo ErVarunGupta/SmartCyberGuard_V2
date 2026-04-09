@@ -7,10 +7,12 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 # from services.system_service import get_system_data
-from services.ai_service import generate_response
+from services.ai_orchestrator import ai_response
 from services.cleaner_service import scan_files, delete_files
 from services.cleaner_engine import scan_system
 from services.system_service import get_system_metrics
+from services.auto_trainer import start_auto_trainer
+from services.response_model import load_data
 
 app = FastAPI()
 
@@ -33,6 +35,13 @@ app = FastAPI()
 #                 process_packet(attacker_ip, "attack")
 
 #         time.sleep(1)
+
+
+from pydantic import BaseModel
+
+class ChatRequest(BaseModel):
+    message: str
+    mode: str = "GEMINI"   # default
 
 
 from scapy.all import IP, TCP
@@ -74,6 +83,9 @@ from services.ids_service import get_ids_data, get_blocked_ips, block_ip
 from services.ids_service import start_ids
 
 @app.on_event("startup")
+def startup_event():
+    start_auto_trainer()
+    load_data()
 def start_ids_service():
     import threading
     threading.Thread(target=start_ids, daemon=True).start()
@@ -110,11 +122,14 @@ def block_ip_api(data: dict):
 # =========================
 class ChatRequest(BaseModel):
     message: str
+    mode: str = "GEMINI"
 
 
 @app.post("/ai")
 def ai_chat(req: ChatRequest):
-    return {"response": generate_response(req.message)}
+    return {
+        "response": ai_response(req.message, req.mode)
+    }
 
 
 ## =========================

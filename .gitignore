@@ -8,3 +8,4 @@ dist/
 build/
 *.spec
 core/config/api_keys.py
+project_full_dump.txt
